@@ -1,44 +1,36 @@
 export const company = {
   email: 'slonixbim.team@gmail.com', phone: '+91 8431752365', telephone: '+918431752365',
   address: 'Hustlehub Tech Park, Somasundarapalya Main Rd, HSR Layout, Bengaluru, Karnataka 560102',
-  // User-supplied local video; poster extracted at six seconds.
   heroVideo: '/videos/construction_bg.mp4', heroPoster: '/images/construction-poster.jpg',
 }
-export const categories = [
-  { name: 'AI & Data', icon: '\u2733', description: 'Find patterns. Create possibilities.' },
-  { name: 'Software Development', icon: '\u2318', description: 'Turn your ideas into working code.' },
-  { name: 'Engineering & BIM', icon: '\u25a7', description: 'Design the world taking shape.' },
-  { name: 'Design & Business', icon: '\u2197', description: 'Connect creativity with opportunity.' },
+export const services = [
+  { slug:'solar-pv-design', title:'Solar PV Design', sector:'Renewable energy', image:'/images/generated/solar.webp', headline:'Smarter solar design. Better project execution.', description:'Solar photovoltaic design and technical documentation for developers, installers, engineering consultants, and contractors.', topics:['Solar PV system design','Solar panel layout design','Single line diagrams (SLD)','Electrical design documentation','Solar permit drawing packages','Roof plans & site layouts'], approach:'We work with client-provided specifications, site information, design criteria, and applicable jurisdictional requirements to develop organized, review-ready solar deliverables.' },
+  { slug:'bim-vdc', title:'BIM & VDC', sector:'Digital construction', image:'/images/generated/bim.webp', headline:'Better information. Better coordination.', description:'Digital modeling, coordination, and construction documentation that help architecture, engineering, and construction teams work from a shared understanding.', topics:['Architectural BIM modeling','Structural BIM modeling','MEP BIM modeling','3D BIM coordination','Clash detection support','Model-based drawings & schedules'], approach:'Our modeling workflows align with your BIM standards, agreed levels of development, project requirements, and documentation expectations.' },
+  { slug:'cad-drafting', title:'CAD Drafting', sector:'Technical documentation', image:'/images/generated/cad.webp', headline:'Precision in every line. Clarity in every detail.', description:'Translate concepts, markups, sketches, and existing documentation into organized 2D drawings and 3D CAD models.', topics:['2D CAD drafting','3D CAD modeling','Technical drawing preparation','Shop drawings','As-built drawings','Drawing conversion & updates'], approach:'We focus on drawing clarity, layer organization, dimensional consistency, and adherence to your drafting standards.' },
+  { slug:'mep-design', title:'MEP Design', sector:'Building systems', image:'/images/generated/mep.webp', headline:'Integrated systems. Coordinated buildings.', description:'Mechanical, electrical, and plumbing drafting, modeling, and documentation support for consultants, contractors, and building design teams.', topics:['HVAC layouts & duct routing','Electrical layouts & power distribution','Water supply & drainage plans','Fire protection layouts','MEP coordination','MEP shop drawings'], approach:'We consider client design criteria, building information, coordination requirements, and applicable project standards while preparing MEP documentation.' },
+  { slug:'fire-safety-plans', title:'Fire Safety Plans', sector:'Safety documentation', image:'/images/generated/fire.webp', headline:'Clear documentation. Safer spaces.', description:'Fire safety drawing and documentation support for commercial, residential, and other building projects.', topics:['Fire escape plans','Emergency evacuation plans','Fire protection layouts','Fire alarm layouts','Life safety plans','Fire safety documentation'], approach:'We prepare drawings using client specifications and applicable project criteria.', note:'Final compliance review, approvals, and professional certifications remain subject to the relevant qualified professionals and authorities.' },
+  { slug:'architectural-design', title:'Architectural Design', sector:'Architecture & construction', image:'/images/generated/architecture.webp', headline:'Design intent, brought into detail.', description:'Architectural drafting, modeling, and construction documentation for residential, commercial, and other building developments.', topics:['Architectural floor plans','Elevations & sections','3D architectural modeling','Construction drawings','Architectural detailing','Drawing documentation'], approach:'We work with your design intent, drawing standards, project specifications, and reference information to prepare clear, coordinated architectural deliverables.' },
+  { slug:'structural-engineering', title:'Structural Engineering', sector:'Structural documentation', image:'/images/generated/structure.webp', headline:'A stronger foundation for project delivery.', description:'Structural drafting, modeling, detailing, and documentation support for consultants, contractors, and engineering firms.', topics:['Structural CAD drafting','Structural BIM modeling','Foundation drawings','Structural framing plans','Reinforcement detailing','Structural shop drawings'], approach:'Our documentation workflows follow engineer-provided design information, project specifications, and applicable drafting and modeling standards.', note:'Engineering calculations, design approvals, and professional sign-offs are undertaken by appropriately qualified professionals as required.' },
 ]
-export const programs = [
-  { title: 'Artificial Intelligence & Machine Learning', category: 'AI & Data', description: 'Explore how intelligent systems learn from data and turn concepts into practical experiments.', topics: ['Python foundations', 'Working with data', 'Machine learning concepts', 'Model evaluation'] },
-  { title: 'Data Science', category: 'AI & Data', description: 'Learn to ask better questions, explore datasets, and communicate insights through visualization.', topics: ['Data preparation', 'Exploratory analysis', 'Visualization', 'Communicating insights'] },
-  { title: 'AutoCAD', category: 'Engineering & BIM', description: 'Explore engineering design and drafting through precise digital drawings.', topics: ['Drawing fundamentals', 'Layers and dimensions', 'Drafting workflows', 'Drawing presentation'] },
-  { title: 'Digital Marketing', category: 'Design & Business', description: 'Connect audience research, creative content, and measurement to understand digital growth.', topics: ['Audience research', 'Content planning', 'Digital channels', 'Campaign measurement'] },
-  { title: 'MERN Stack Development', category: 'Software Development', description: 'Connect frontend and backend concepts while exploring full stack web applications.', topics: ['JavaScript', 'React interfaces', 'Node and Express concepts', 'MongoDB foundations'] },
-  { title: 'Revit - ARCH', category: 'Engineering & BIM', description: 'Explore architectural modeling and how coordinated building information supports design.', topics: ['Model setup', 'Architectural elements', 'Views and sheets', 'Model coordination'] },
+export const industries = ['Renewable Energy','Architecture & Construction','Commercial & Residential Buildings','Infrastructure Development','Engineering Consultancies','Real Estate Development','Industrial & Manufacturing Facilities']
+export const advantages = [
+ ['Flexible engagement','Project-based outsourcing or dedicated resources, built around your requirements.'],
+ ['Multidisciplinary expertise','Design, drafting, modeling, and documentation through one engineering partner.'],
+ ['Structured quality checks','Technical accuracy, drawing consistency, and review against agreed specifications.'],
+ ['Clear communication','Visibility into project status, milestones, deliverables, and revisions.'],
+ ['Scalable support','Adapt engineering capacity to changing workloads and delivery schedules.'],
+ ['Respect for confidentiality','Project information handled according to agreed security and data protection arrangements.'],
 ]
-export const projects = [
-  { title: 'From raw data to a clear story', category: 'AI & Data', type: 'Analytics dashboard', visual: 'dashboard', description: 'Sample brief: explore a public sales dataset, identify trends, and present an interactive dashboard with a clear explanation of your findings.' },
-  { title: 'A space, thoughtfully modeled', category: 'Engineering & BIM', type: 'Architectural study', visual: 'building', description: 'Sample brief: model a small studio, organize views, and prepare a drawing sheet that explains your design choices.' },
-  { title: 'An idea becomes an interface', category: 'Software Development', type: 'Responsive web application', visual: 'interface', description: 'Sample brief: build a responsive learning planner with accessible navigation, editable tasks, and clear empty states.' },
+export const process = [
+ ['Project discovery','Understand objectives, technical requirements, reference documents, and expected outcomes.'],
+ ['Scope & proposal','Agree deliverables, timelines, and a suitable project proposal.'],
+ ['Project planning','Establish workflows, resources, communication channels, and milestones.'],
+ ['Engineering execution','Develop the agreed design, drafting, modeling, and documentation.'],
+ ['Internal review','Check outputs against drawing standards, specifications, and agreed requirements.'],
+ ['Client delivery','Submit deliverables and coordinate feedback and revisions within the defined scope.'],
 ]
 export const articles = [
-  { title: 'Your first portfolio project: start small, finish well.', tag: 'CAREER TOOLKIT', time: '3 min read', body: 'Choose one problem you can explain in a sentence. Define a small outcome, build it, and document your decisions. A finished project with a clear README is easier to discuss than a large unfinished idea. Include screenshots, what you learned, and what you would improve next.' },
-  { title: 'AI, data, or development? Finding your starting point.', tag: 'LEARNING PATHS', time: '2 min read', body: 'Try a small exercise in each area: explore a dataset, build a simple webpage, and experiment with an AI tool. Notice which questions make you curious. Use that experience to discuss a suitable program with the Slonix team; confirm prerequisites before enrolling.' },
-  { title: 'Why the process matters as much as the final design.', tag: 'PROJECT NOTES', time: '2 min read', body: 'Keep a record of your sketches, assumptions, iterations, and checks. Explaining why you changed a design demonstrates your thinking. Present the problem, your constraints, the approach you tried, and the result. Credit any external assets or datasets you use.' },
+ {title:'The role of BIM in modern construction projects', category:'BIM & VDC', body:'A coordinated digital model helps project teams understand how architectural, structural, and building service information fits together. Agree model responsibilities and levels of development at the outset. Regular coordination reviews can surface conflicts earlier, while organized model-based drawings and schedules keep information easier to use. A model supports decision-making; its usefulness depends on the quality and consistency of the information supplied.'},
+ {title:'Why engineering firms outsource CAD drafting', category:'PROJECT DELIVERY', body:'External drafting support can help a team respond to peak workloads and organize drawing backlogs. A clear scope should identify source information, drawing standards, file formats, review responsibilities, and revision allowances. Start with a well-defined deliverable and agree a review milestone before scaling the engagement. Consistent communication helps an extended team work with your existing process.'},
+ {title:'How MEP coordination improves construction workflows', category:'BUILDING SYSTEMS', body:'Mechanical, electrical, and plumbing layouts share limited space with architectural and structural elements. Coordination brings these inputs together so that project teams can review routing, access, and potential conflicts. Record issues, assign responsibilities, and track changes through agreed review cycles. Coordinated documentation supports site planning, while final design decisions and approvals remain with the responsible professionals.'},
 ]
-export const faqs = [
-  ['How do I choose the right program?', 'Start with your interests and current experience. Use the program filters, explore an overview, then contact Slonix to discuss prerequisites and the current syllabus.'],
-  ['Do I need previous experience?', 'Prerequisites vary by program. Contact the team with your background and learning goals to confirm a suitable starting point.'],
-  ['Where can I find fees, schedules, and course duration?', 'Ask Slonix directly for current fees, batch schedules, delivery format, and duration. These details are not confirmed in this prototype.'],
-  ['Will I work on projects?', 'Slonix describes a practical, project-oriented learning approach. The project briefs on this page are illustrative samples; ask the team about the projects included in your selected course.'],
-  ['Does this website accept enrollments?', 'This is a frontend prototype. The form validates your details locally but does not send, store, or enroll you. Use the verified email or phone links to contact Slonix directly.'],
-]
-
-export const photography = {
-  'AI & Data': { src: '/images/coding.jpg', alt: 'Stock photograph of a developer working with code' },
-  'Software Development': { src: '/images/coding.jpg', alt: 'Stock photograph of hands working at a laptop' },
-  'Engineering & BIM': { src: '/images/architecture.jpg', alt: 'Stock architectural photograph of glass buildings' },
-  'Design & Business': { src: '/images/collaboration.jpg', alt: 'Stock photograph of people collaborating around laptops' },
-}

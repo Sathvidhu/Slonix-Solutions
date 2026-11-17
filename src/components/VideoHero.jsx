@@ -45,12 +45,12 @@ export default function VideoHero() {
     <div className="hero-overlay" aria-hidden="true" />
     <div className="container hero-content">
       <div className="hero-copy">
-        <p className="eyebrow light">SLONIX SOLUTIONS / LEARNING IN ACTION</p>
-        <h1>Build the skills.<br/>Shape <em>your next.</em></h1>
-        <p className="hero-description">Practical learning in technology, engineering, and design. Turn what you know into what you can do.</p>
-        <div className="button-row"><a className="button primary" href="#programs">Explore programs <Arrow/></a><a className="button outline-light" href="#contact">Contact us <Arrow/></a></div>
+        <p className="eyebrow light">DESIGN ENGINEERING / GLOBAL PROJECT SUPPORT</p>
+        <h1>Engineering excellence.<br/>Delivered <em>worldwide.</em></h1>
+        <p className="hero-description">Your trusted partner for design engineering, BIM & technical solutions. Precise, practical, and project-ready support, built around your business.</p>
+        <div className="button-row"><a className="button primary" href="#services">Explore our services <Arrow/></a><a className="button outline-light" href="#contact">Discuss your project <Arrow/></a></div>
       </div>
-      <aside className="hero-support glass"><span className="eyebrow light">FROM CONCEPT TO CAPABILITY</span><p>Ideas become meaningful<br/> when you put them to work.</p><a href="#practical" className="text-link">Discover practical learning <Arrow/></a></aside>
+      <aside className="hero-support glass"><span className="eyebrow light">YOUR EXTENDED ENGINEERING TEAM</span><p>From your first concept<br/>to your next deliverable.</p><a href="#delivery" className="text-link">Find your delivery model <Arrow/></a></aside>
     </div>
     <div className="container hero-bottom"><a href="#approach">Discover our approach <span aria-hidden="true">↓</span></a>
       {!reduced && !failed && <button className="video-toggle" onClick={toggle} aria-label={playing ? 'Pause background video' : 'Play background video'} aria-pressed={playing}><span aria-hidden="true">{playing ? 'Ⅱ' : '▷'}</span>{playing ? 'Pause video' : 'Play video'}</button>}
