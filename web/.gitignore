@@ -1,0 +1,7 @@
+﻿node_modules/
+*.log
+tests/export-check.xlsx
+
+# Supabase CLI local state (never credentials or linked-project cache)
+/supabase/.temp/
+/supabase/.branches/

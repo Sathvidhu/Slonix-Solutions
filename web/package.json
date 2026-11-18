@@ -1,0 +1,17 @@
+{
+  "name": "montme-admin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "start": "python -m http.server 5184 --bind 127.0.0.1 --directory dist",
+    "build:imports": "node scripts/build-imports.mjs",
+    "test:backend": "deno test --allow-env supabase/functions/tests.ts"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
+    "esbuild": "^0.28.2",
+    "pdfjs-dist": "^6.5.438",
+    "read-excel-file": "^9.3.17"
+  }
+}

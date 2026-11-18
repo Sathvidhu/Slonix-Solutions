@@ -1,0 +1,10 @@
+﻿project_id = "xnbqhzawxnjflhoskkds"
+
+[functions.employee-login]
+verify_jwt = false
+
+[functions.employee-admin]
+verify_jwt = false
+
+[functions.deliver-notifications]
+verify_jwt = false

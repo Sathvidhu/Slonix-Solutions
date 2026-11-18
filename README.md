@@ -1,4 +1,4 @@
-﻿# Slonix Solutions
+# Slonix Solutions
 
 **Building skills for the real world.**
 

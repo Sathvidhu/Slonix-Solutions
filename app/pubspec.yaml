@@ -1,0 +1,22 @@
+name: montme
+description: Employee attendance, business calling and follow-up workspace.
+publish_to: none
+version: 0.4.0+4
+environment:
+  sdk: ^3.10.3
+dependencies:
+  flutter:
+    sdk: flutter
+  shared_preferences: ^2.5.3
+  url_launcher: ^6.3.2
+  web: ^1.1.1
+  archive: ^4.0.0
+  crypto: ^3.0.6
+  http: ^1.6.0
+  flutter_secure_storage: ^11.2.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+flutter:
+  uses-material-design: true

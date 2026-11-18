@@ -25,3 +25,35 @@ dist-ssr
 
 # Temporary local review tunnel
 .review/
+
+# Montme workspace and generated artifacts
+/.sites-deploy/
+*.apk
+*.aab
+/montme-admin-deploy.tar.gz
+/admin-preview.jpg
+/app/docs/employee-preview.jpg
+
+# Admin static files are source, not generated build output
+!/web/dist/
+!/web/dist/**
+
+# Local credentials and tool state
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+.aws/
+.codex/
+.agents/
+.vercel/
+
+# Supabase CLI cache created by remote commands from repository root
+/supabase/.temp/
+/supabase/.branches/
+
+# Downloaded private Firebase/server credentials
+**/*firebase-adminsdk*.json
+**/*service-account*.json
