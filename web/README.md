@@ -1,4 +1,4 @@
-﻿# Montme admin dashboard - 0.4.0
+﻿# Montme admin dashboard - 0.5.0
 
 Source: `web/`. Browser assets: `dist/`. The Flutter employee app is in [`../app/`](../app/README.md). The original Slonix public website remains at repository root.
 
@@ -45,3 +45,5 @@ npm run build:imports
 ```
 
 Node tests cover scheduling, contact validation, a real Excel workbook, PostgreSQL migration/RLS behavior, read receipts and password non-persistence. Deno tests cover trusted account/login/delivery handlers. Browser QA used fictional local-preview fixtures, not live employee records. No physical Android device was attached.
+
+Version 0.5 adds early clock-out decisions and employee report downloads under Activity, global Reload, employee IDs in filters, device-lead call syncing, legacy break timezone repair and Gmail welcome/priority emails. Apply migrations 007 and 008 after 006. See Supabase deployment instructions for private Gmail secrets.

@@ -59,6 +59,11 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
       await s.scheduleAttendanceAlerts();
       final state = await DeviceAlerts.status();
       if (mounted && state['openInbox'] == true) openNotifications();
+      if (DeviceAlerts.supported &&
+          !s.prefs.containsKey('montme.alert-permission.prompted')) {
+        await s.prefs.setBool('montme.alert-permission.prompted', true);
+        await DeviceAlerts.permission();
+      }
     });
   }
 
@@ -87,6 +92,79 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> reloadWorkspace() async {
+    if (s.cloudBusy) {
+      message(context, 'A sync is already running. Please wait.');
+      return;
+    }
+    if (s.consent && CallBridge.supported) {
+      await importCalls(silent: true);
+    }
+    await s.syncCompany();
+    if (mounted) {
+      message(
+        context,
+        s.cloud.error == null
+            ? 'Database checked. Records and notifications refreshed.'
+            : 'Sync failed: ${s.cloud.error}',
+      );
+    }
+  }
+
+  Future<void> requestEarlyExit() async {
+    final reason = TextEditingController();
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Request early clock-out'),
+        content: TextField(
+          controller: reason,
+          maxLength: 1000,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Reason for leaving early',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (reason.text.trim().isNotEmpty) {
+                Navigator.pop(ctx, true);
+              }
+            },
+            child: const Text('Send request'),
+          ),
+        ],
+      ),
+    );
+    if (approved == true && s.active != null) {
+      await action(() async {
+        await s.syncCompany();
+        if (s.cloud.error != null) throw StateError(s.cloud.error!);
+        await s.cloud.request(
+          '/rest/v1/rpc/request_early_exit',
+          method: 'POST',
+          body: {
+            'shift_input': s.active!.id,
+            'reason_input': reason.text.trim(),
+          },
+        );
+        await s.syncCompany();
+        if (mounted) {
+          message(
+            context,
+            'Request sent. Check Notifications for the admin decision.',
+          );
+        }
+      });
+    }
+    reason.dispose();
+  }
+
   Future<void> action(Future<void> Function() fn) async {
     try {
       await fn();
@@ -103,6 +181,7 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
     refresh(() => importing = true);
     try {
       final count = await s.importCalls();
+      await s.syncCompany();
       final pending = s.pendingLeadId;
       final matches =
           s.calls
@@ -156,16 +235,6 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
           title: Text(title),
           content: Text(body),
           actions: [
-            IconButton(
-              tooltip: 'Notifications',
-              onPressed: openNotifications,
-              icon: Badge(
-                isLabelVisible: s.notificationInbox.any(
-                  (n) => n['read_at'] == null,
-                ),
-                child: const Icon(Icons.notifications_outlined),
-              ),
-            ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Cancel'),
@@ -204,6 +273,21 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
                   child: Brand(),
                 ),
           actions: [
+            IconButton(
+              tooltip: 'Notifications',
+              onPressed: openNotifications,
+              icon: Badge(
+                isLabelVisible: s.notificationInbox.any(
+                  (n) => n['read_at'] == null,
+                ),
+                child: const Icon(Icons.notifications_outlined),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Reload and check sync',
+              onPressed: reloadWorkspace,
+              icon: const Icon(Icons.refresh),
+            ),
             if (wide) const Tag('LOCAL WORKSPACE'),
             const SizedBox(width: 12),
             CircleAvatar(
@@ -221,14 +305,26 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 1120),
-              child: switch (page) {
-                0 => overview(),
-                1 => leadsPage(),
-                2 => callsPage(),
-                3 => reports(),
-                4 => settings(),
-                _ => assignments(),
-              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (s.cloud.error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: info(
+                        'Sync needs attention: ${s.cloud.error}. Tap Reload to retry. Your saved records stay on this phone.',
+                      ),
+                    ),
+                  switch (page) {
+                    0 => overview(),
+                    1 => leadsPage(),
+                    2 => callsPage(),
+                    3 => reports(),
+                    4 => settings(),
+                    _ => assignments(),
+                  },
+                ],
+              ),
             ),
           ),
         ),
@@ -637,6 +733,13 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
                       : 'Clock out after 2 hours',
                 ),
               ),
+              if (active != null && !s.canClockOut)
+                TextButton.icon(
+                  onPressed: requestEarlyExit,
+                  style: TextButton.styleFrom(foregroundColor: Colors.white),
+                  icon: const Icon(Icons.send_outlined),
+                  label: const Text('Request early clock-out'),
+                ),
               if (active != null)
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(

@@ -5,7 +5,16 @@ extension _NotificationScreens on _WorkspaceState {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (ctx) => Scaffold(
-          appBar: AppBar(title: const Text('Notifications')),
+          appBar: AppBar(
+            title: const Text('Notifications'),
+            actions: [
+              IconButton(
+                tooltip: 'Reload notifications',
+                onPressed: reloadWorkspace,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
           body: ListenableBuilder(
             listenable: s,
             builder: (ctx, _) => ListView(

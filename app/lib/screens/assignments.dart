@@ -10,6 +10,103 @@ extension _AssignmentScreens on _WorkspaceState {
           'Assigned work',
           'Messages, files and next steps from your admin.',
         ),
+        if (cloud.connected) ...[
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Send a report to your admin',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'If records are missing, send all saved calls directly as Excel or upload an exported file. Uploads are reviewed separately and do not create duplicate call records.',
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: s.cloudBusy
+                            ? null
+                            : () => action(() async {
+                                await cloud.uploadReport(
+                                  'montme-calls-${DateTime.now().millisecondsSinceEpoch}.xlsx',
+                                  s.excel(),
+                                  note:
+                                      'All device call records, exported by employee',
+                                );
+                                await s.syncCompany();
+                                if (mounted) {
+                                  message(
+                                    context,
+                                    'Call report sent to admin.',
+                                  );
+                                }
+                              }),
+                        icon: const Icon(Icons.upload_file),
+                        label: const Text('Send all calls as Excel'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => action(() async {
+                          final file = await FilePicker.pickFile(
+                            type: FileType.custom,
+                            allowedExtensions: [
+                              'xlsx',
+                              'pdf',
+                              'txt',
+                              'csv',
+                              'json',
+                            ],
+                          );
+                          if (file == null) return;
+                          final size = await file.length();
+                          if (size == null ||
+                              size < 1 ||
+                              size > 20 * 1024 * 1024) {
+                            throw StateError(
+                              'Choose a non-empty file up to 20 MB.',
+                            );
+                          }
+                          await cloud.uploadReport(
+                            file.name,
+                            await file.readAsBytes(),
+                          );
+                          await s.syncCompany();
+                          if (mounted) message(context, 'File sent to admin.');
+                        }),
+                        icon: const Icon(Icons.attach_file),
+                        label: const Text('Upload report file'),
+                      ),
+                      TextButton.icon(
+                        onPressed: exportExcel,
+                        icon: const Icon(Icons.download),
+                        label: const Text('Export all calls'),
+                      ),
+                    ],
+                  ),
+                  ...cloud.submissions
+                      .take(5)
+                      .map(
+                        (f) => ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.check_circle_outline),
+                          title: Text(f['file_name'] as String),
+                          subtitle: Text(
+                            'Uploaded ${dateLabel(DateTime.parse(f['created_at'] as String).toLocal())}',
+                          ),
+                        ),
+                      ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         if (!cloud.connected) ...[
           Card(
             child: empty(

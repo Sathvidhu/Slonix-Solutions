@@ -1,3 +1,4 @@
+import {emailReady,sendEmail} from '../_shared/email.ts';
 import {api,authorize,body,endpoint,HttpError,text} from '../_shared/http.ts';
 export const handler=endpoint(async(req)=>{
  const actor=await authorize(req,'employees.manage'),input=await body(req),id=input.id;
@@ -16,7 +17,15 @@ export const handler=endpoint(async(req)=>{
  try{
    if(!created){await api(`/auth/v1/admin/users/${authId}`,{method:'PUT',body:{email,...(password?{password}:{}),ban_duration:row.active?'none':'876000h',user_metadata:{employee_code}}});}
    const result=await api(`/rest/v1/employees${id?'?id=eq.'+encodeURIComponent(id):''}`,{method:id?'PATCH':'POST',body:{...row,auth_id:authId},prefer:'return=representation'});
-   return {employee:result[0],account_created:created};
+   let welcome_email:any=null;
+   if(password){
+     welcome_email={status:'blocked',message:'Configure GMAIL_USER and GMAIL_APP_PASSWORD in Supabase secrets, then reset the password to send a fresh welcome email.'};
+     if(emailReady())try{
+       await sendEmail([email],created?'Welcome to Montme - your employee login':'Montme - your updated employee login',`Hello ${name},\n\nWelcome to Montme. Your admin has ${created?'created':'updated'} your employee account.\n\nEmployee ID: ${employee_code}\nPassword: ${password}\nWork email: ${email}\nAccess role: ${role.name}\n\nOpen the Montme employee app and sign in using this employee ID and password. Keep this email private.\n\nRegards,\nMontme Admin`, 'montme-welcome-'+crypto.randomUUID());
+       welcome_email={status:'sent',message:'Accepted by email provider; check Inbox and Spam.'};
+     }catch{welcome_email={status:'failed',message:'Account saved, but the welcome email failed. Check Gmail secrets and try a new password reset.'};}
+   }
+   return {employee:result[0],account_created:created,welcome_email};
  }catch(e){if(created){try{await api(`/auth/v1/admin/users/${authId}`,{method:'DELETE'});}catch{}}else if(old){try{await api(`/auth/v1/admin/users/${authId}`,{method:'PUT',body:{email:old.email,ban_duration:old.active?'none':'876000h'}});}catch{}}throw e;}
 });
 if(import.meta.main)Deno.serve(handler);

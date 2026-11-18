@@ -61,3 +61,6 @@ app.*.map.json
 .aws/
 .codex/
 .agents/
+
+/test_output/
+/android/.kotlin/

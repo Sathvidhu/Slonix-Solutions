@@ -1,3 +1,4 @@
+import {emailReady,sendEmail} from '../_shared/email.ts';
 import {api,authorize,body,configuration,endpoint,HttpError} from '../_shared/http.ts';
 let oauthCache:{token:string;expires:number}|null=null;
 const b64=(bytes:Uint8Array)=>btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
@@ -6,7 +7,7 @@ export const handler=endpoint(async(req)=>{
  const dispatchSecret=Deno.env.get('MONTME_DISPATCH_SECRET');const supplied=req.headers.get('x-dispatch-secret');
  if(!dispatchSecret||supplied!==dispatchSecret)await authorize(req,'notifications.manage');
  const input=await body(req);
- if(input.action==='health')return {email:!!(Deno.env.get('RESEND_API_KEY')&&Deno.env.get('MONTME_EMAIL_FROM')),push:!!Deno.env.get('FIREBASE_SERVICE_ACCOUNT'),scheduler:!!dispatchSecret};
+ if(input.action==='health')return {email:emailReady(),push:!!Deno.env.get('FIREBASE_SERVICE_ACCOUNT'),scheduler:!!dispatchSecret};
  await api('/rest/v1/rpc/refresh_attendance_notifications',{method:'POST',body:{}});
  const jobs=await api('/rest/v1/rpc/claim_notification_deliveries',{method:'POST',body:{batch_size:30}}),summary:{sent:number;blocked:number;failed:number;skipped:number}={sent:0,blocked:0,failed:0,skipped:0};
  for(const job of jobs){
@@ -19,13 +20,11 @@ export const handler=endpoint(async(req)=>{
        if(!targets.length){patch={status:'skipped',last_error:'No active account recipients.'};summary.skipped++;}
        else if(job.channel==='email'){
          const settings=await api('/rest/v1/workspace_settings?select=email_high_priority');
-         const key=settings[0]?.email_high_priority?Deno.env.get('RESEND_API_KEY'):null,sender=Deno.env.get('MONTME_EMAIL_FROM');
-         if(!key||!sender){patch={status:'blocked',last_error:'Email provider is not configured. Add RESEND_API_KEY and MONTME_EMAIL_FROM in Supabase secrets.'};summary.blocked++;}
+         if(!settings[0]?.email_high_priority||!emailReady()){patch={status:'blocked',last_error:'Email is disabled or unconfigured. Add GMAIL_USER and GMAIL_APP_PASSWORD in Supabase secrets.'};summary.blocked++;}
          else{
            const emails=[...new Set(targets.map((t:any)=>t.email))] as string[];
-           const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json','Idempotency-Key':`montme-notification-${n.id}`},body:JSON.stringify({from:sender,to:emails,subject:`[Montme · ${n.priority}] ${n.title}`,text:`${n.title}\n\n${n.body}\n\nSign in to Montme to review this notification.`,tags:[{name:'category',value:n.kind}]})});
-           const data=await r.json();if(!r.ok)throw Error(`Email provider rejected delivery (${r.status}): ${data.message||'check sender configuration'}`);
-           patch={status:'sent',sent_at:new Date().toISOString(),provider_id:data.id,last_error:null};summary.sent++;
+           const providerId=await sendEmail(emails,`[Montme - ${n.priority}] ${n.title}`,`${n.title}\n\n${n.body}\n\nSign in to Montme to review this notification.`, `montme-notification-${n.id}`);
+           patch={status:'sent',sent_at:new Date().toISOString(),provider_id:providerId,last_error:null};summary.sent++;
          }
        }else{
          const raw=Deno.env.get('FIREBASE_SERVICE_ACCOUNT');

@@ -81,3 +81,23 @@ Run the Flutter tests/analyzer from `app/`, `npm test` from `web/`, and `npm run
 Tests cover migration/history preservation and RLS, read/unread receipts, fixed break windows and daily extra-break limits, local persistence, import field errors, real XLSX extraction, PDF text-column extraction, password non-persistence, login throttling, privileged-account authorization and failed-provider status reporting.
 
 No physical Android device was attached during development. Verify employee provisioning/ID login, real break alarms, background FCM, attachment downloads and SIM call return on a company test phone. Configure production signing before public APK distribution.
+
+## 0.5 sync, early clock-out and Gmail update
+
+Migration 007 preserves all existing records and adds device-lead call names, early clock-out requests and private employee report submissions. Apply it after 006, then apply 008 to normalize legacy IST break timestamps and deploy all three Edge Functions. The new migration is already applied to the connected project.
+
+The mobile notification bell and Reload appear on every main page. Android 13+ requests notification permission after first authenticated startup; if previously denied, use Notifications > Enable device alerts or Android app settings. Remote closed-app messages still require Firebase. In-app messages and local alarms remain separate.
+
+Employees request early clock-out with a reason. Activity > Early clock-out requests lets authorized admins approve or dismiss with a note. The employee receives a notification; an approval applies to that shift only and is consumed at clock-out. This is clock-out, not account sign-out.
+
+Work > Send all calls as Excel sends the current device report directly. Upload report file accepts an exported workbook or PDF/text/CSV/JSON up to 20 MB. Activity > Employee report uploads lists private downloads. These files are reviewed separately and do not insert duplicate call rows.
+
+### Admin Gmail activation
+
+1. Enable Google 2-Step Verification for the admin sender account.
+2. Generate an app password at https://myaccount.google.com/apppasswords .
+3. In Supabase > Edge Functions > Secrets set `GMAIL_USER` to the full admin Gmail address and `GMAIL_APP_PASSWORD` to the app password. Do not use the ordinary account password or commit these values.
+4. In Notifications check delivery setup, retry blocked deliveries and process pending alerts.
+5. New employee accounts and password resets email a greeting, employee ID, assigned password, email and access role to the employee's recorded email. The password is used only for Auth and this immediate email; it is not stored in notifications or database rows. If the email fails, the account remains saved and the admin sees the result. Set a fresh password to retry credential email; an old password cannot be recovered.
+
+Gmail uses TLS to smtp.gmail.com:465. Google may restrict app passwords on managed/Advanced Protection accounts and applies sending quotas. Provider acceptance is not proof of Inbox delivery; check Spam and Gmail Sent. Resend remains an optional fallback when Gmail secrets are absent. SMTP retries can produce duplicate messages after ambiguous network failures.

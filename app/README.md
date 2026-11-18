@@ -1,4 +1,4 @@
-﻿# Montme employee app - 0.4.0
+﻿# Montme employee app - 0.5.0
 
 Flutter Android employee workspace. The admin dashboard is in [`../web/`](../web/README.md); the existing Slonix public website remains at repository root.
 
@@ -38,3 +38,5 @@ Data is locally durable, with company sync and retry on network recovery while t
 No physical phone was attached. Validate employee login, alarm timing, background push, notification read receipts, downloads, SIM-call return and recording-folder permissions on a company test phone.
 
 See [backend and notification setup](../web/supabase/DEPLOYMENT.md) for server/provider requirements. `app/web/` is optional Flutter browser-platform source, separate from the top-level admin `web/` directory.
+
+Version 0.5 fixes syncing calls for device-created leads and UTC break timestamps. The main header exposes Notifications and Reload. Today supports a reasoned early clock-out request; admin decisions apply to the current shift. Work supports sending all calls as Excel and attaching report files for admin review. Android notification permission is requested once after authenticated startup.

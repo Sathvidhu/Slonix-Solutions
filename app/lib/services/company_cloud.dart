@@ -22,7 +22,9 @@ class CompanyCloud {
       receipts = [],
       contacts = [],
       notifications = [],
-      notificationReceipts = [];
+      notificationReceipts = [],
+      exitRequests = [],
+      submissions = [];
   Map<String, dynamic> settings = {};
   DateTime? lastSync;
   String? error;
@@ -186,6 +188,8 @@ class CompanyCloud {
     contacts = [];
     notifications = [];
     notificationReceipts = [];
+    exitRequests = [];
+    submissions = [];
     settings = {};
     userId = null;
     lastSync = null;
@@ -200,6 +204,8 @@ class CompanyCloud {
                     ? '&recipient_ids=cs.{${employee!['id']}}'
                     : table == 'notifications'
                     ? '&audience=eq.employee&employee_id=eq.${employee!['id']}'
+                    : (table == 'early_exit_requests' || table == 'work_submissions')
+                    ? '&employee_id=eq.${employee!['id']}'
                     : table == 'notification_receipts'
                     ? '&user_id=eq.$userId'
                     : ''}',
@@ -225,6 +231,8 @@ class CompanyCloud {
       rows('notifications'),
       rows('notification_receipts'),
       rows('workspace_settings'),
+      rows('early_exit_requests'),
+      rows('work_submissions'),
     ]);
     assignments = results[0]
       ..sort(
@@ -243,6 +251,8 @@ class CompanyCloud {
       );
     notificationReceipts = results[5];
     settings = results[6].firstOrNull ?? {};
+    exitRequests = results[7];
+    submissions = results[8];
   }
 
   Future<void> upsert(
@@ -281,6 +291,65 @@ class CompanyCloud {
     method: 'POST',
     body: {'token_input': token},
   );
+  Future<void> uploadReport(
+    String name,
+    List<int> bytes, {
+    String note = '',
+  }) async {
+    if (bytes.isEmpty || bytes.length > 20 * 1024 * 1024) {
+      throw StateError('Choose a non-empty file up to 20 MB.');
+    }
+    await request('/auth/v1/user');
+    final safe = name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final path =
+        '${employee!['id']}/${DateTime.now().microsecondsSinceEpoch}/$safe';
+    final upload =
+        http.Request(
+            'POST',
+            Uri.parse('$url/storage/v1/object/montme-submissions/$path'),
+          )
+          ..headers.addAll({
+            'apikey': key,
+            'Authorization': 'Bearer $_access',
+            'Content-Type': 'application/octet-stream',
+            'x-upsert': 'false',
+          })
+          ..bodyBytes = bytes;
+    final response = await http.Response.fromStream(
+      await _client.send(upload).timeout(const Duration(seconds: 60)),
+    );
+    if (response.statusCode >= 400) {
+      throw StateError(
+        'Report upload failed (${response.statusCode}). Retry after refreshing.',
+      );
+    }
+    try {
+      await request(
+        '/rest/v1/work_submissions',
+        method: 'POST',
+        body: {
+          'employee_id': employee!['id'],
+          'file_path': path,
+          'file_name': name,
+          'mime_type': 'application/octet-stream',
+          'size_bytes': bytes.length,
+          'note': note,
+        },
+      );
+    } catch (_) {
+      try {
+        await request(
+          '/storage/v1/object/montme-submissions',
+          method: 'DELETE',
+          body: {
+            'prefixes': [path],
+          },
+        );
+      } catch (_) {}
+      rethrow;
+    }
+  }
+
   Future<String> signedFile(String path) async {
     final data =
         await request(

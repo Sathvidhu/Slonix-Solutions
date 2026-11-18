@@ -384,17 +384,20 @@ class AppStore extends ChangeNotifier {
         'calls': calls.map((c) => c.toJson()).toList(),
         'sessions': sessions.map((v) => v.toJson()).toList(),
         'contacts': cloud.contacts.map((v) => v['id']).toList(),
+        'mapping': map,
       });
       if (_lastCloudUpload != uploadSignature) {
         await cloud.upsert(
           'call_records',
           'employee_id,device_call_id',
           calls
-              .where((c) => remoteIds.contains(map[c.leadId]))
               .map(
                 (c) => <String, dynamic>{
                   'employee_id': eid,
-                  'contact_id': map[c.leadId],
+                  'contact_id': remoteIds.contains(map[c.leadId])
+                      ? map[c.leadId]
+                      : null,
+                  'lead_name': leadFor(c.leadId)?.name ?? '',
                   'device_call_id': c.id,
                   'phone': leadFor(c.leadId)?.phone ?? '',
                   'started_at': c.at.toUtc().toIso8601String(),
@@ -417,7 +420,7 @@ class AppStore extends ChangeNotifier {
                   'device_shift_id': shift.id,
                   'started_at': shift.start.toUtc().toIso8601String(),
                   'ended_at': shift.end?.toUtc().toIso8601String(),
-                  'breaks': shift.breaks,
+                  'breaks': shift.breaks.map((b) => {for(final entry in b.entries) entry.key: ['start','end','deadline'].contains(entry.key) && entry.value != null ? DateTime.parse(entry.value!).toUtc().toIso8601String() : entry.value}).toList(),
                 },
               )
               .toList(),
@@ -430,6 +433,13 @@ class AppStore extends ChangeNotifier {
       await save();
     } catch (e) {
       cloud.error = e.toString();
+      addLocalAlert(
+        'sync-error:${e.toString()}',
+        'Work sync needs attention',
+        'Some records have not reached your admin. Use Reload to retry. ${e.toString()}',
+        kind: 'sync',
+      );
+      await save();
       notifyListeners();
     } finally {
       cloudBusy = false;
@@ -460,7 +470,12 @@ class AppStore extends ChangeNotifier {
   Duration get shiftElapsed =>
       active == null ? Duration.zero : DateTime.now().difference(active!.start);
   bool get canClockOut =>
-      active != null && shiftElapsed >= const Duration(hours: 2);
+      active != null &&
+      (shiftElapsed >= const Duration(hours: 2) ||
+          cloud.exitRequests.any(
+            (r) =>
+                r['device_shift_id'] == active!.id && r['status'] == 'approved',
+          ));
   String? get recordingFolder => prefs.getString('recording.folder');
   bool get hasAdminPassword => prefs.containsKey('admin.hash');
   Future<void> setAdminPassword(String password) async {
@@ -585,7 +600,13 @@ class AppStore extends ChangeNotifier {
     if (current == null) {
       sessions.add(WorkSession(id: uid(), start: now));
     } else {
-      if (!canClockOut) {
+      if (shiftElapsed < const Duration(hours: 2) && cloud.connected) {
+        await cloud.request(
+          '/rest/v1/rpc/consume_early_exit',
+          method: 'POST',
+          body: {'shift_input': current.id},
+        );
+      } else if (!canClockOut) {
         throw StateError('Clock out is available after 2 hours from clock in.');
       }
       if (current.onBreak) {

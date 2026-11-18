@@ -14,6 +14,7 @@ test('Migration preserves history and enforces roles, notification receipts and 
  await db.exec(await readFile(new URL('../supabase/migrations/20261118_004_people_notifications.sql',import.meta.url),'utf8'));
  const cron=(await readFile(new URL('../supabase/migrations/20261118_005_notification_cron.sql',import.meta.url),'utf8')).split('create extension if not exists pg_cron')[0];await db.exec(cron);
  await db.exec(await readFile(new URL('../supabase/migrations/20261118_006_notification_operations.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../supabase/migrations/20261118_007_sync_exit_submissions.sql',import.meta.url),'utf8'));
  assert.equal((await db.query('select institution from contacts')).rows[0].institution,'Existing institute');
  assert.equal((await db.query('select count(*)::int as n from break_records')).rows[0].n,1);
  assert.equal((await db.query('select count(*)::int as n from notifications')).rows[0].n,0);
@@ -35,5 +36,24 @@ test('Migration preserves history and enforces roles, notification receipts and 
  assert.equal((await db.query('select count(*)::int as n from notifications')).rows[0].n,count);
  await asUser(employee,`update shift_records set breaks='[{"start":"2026-11-18T08:10:00Z","kind":"lunch","end":"2026-11-18T08:50:00Z"}]' where device_shift_id='new';`);
  assert.equal((await db.query("select count(*)::int as n from notifications where kind='break_reminder' and cancelled_at is null")).rows[0].n,0);
+ // Local-only lead calls are valid records with no remote contact foreign key.
+ await asUser(employee,`insert into call_records(employee_id,device_call_id,phone,lead_name,started_at,duration_seconds,direction,source)values('${employee}','local-lead-call','9876543210','Device lead',now(),22,'Outgoing','Android');`);
+ assert.equal((await db.query("select count(*)::int as n from call_records where device_call_id='local-lead-call'")).rows[0].n,1);
+ await asUser(employee,`select request_early_exit('new','Appointment');`);
+ const exit=(await db.query('select id from early_exit_requests')).rows[0].id;
+ await assert.rejects(asUser(outsider,`select decide_early_exit('${exit}',true,'');`),/Activity permission/);
+ await asUser(admin,`select decide_early_exit('${exit}',false,'Please complete handover');`);
+ assert.equal((await db.query("select count(*)::int as n from notifications where title='Early clock-out dismissed'")).rows[0].n,1);
+ await assert.rejects(asUser(employee,`select consume_early_exit('new');`),/approval/);
+ await asUser(employee,`insert into shift_records(employee_id,device_shift_id,started_at)values('${employee}','approval-test',now());select request_early_exit('approval-test','Travel');`);
+ const approved=(await db.query("select id from early_exit_requests where device_shift_id='approval-test'")).rows[0].id;
+ await asUser(admin,`select decide_early_exit('${approved}',true,'Approved');`);
+ await asUser(employee,`select consume_early_exit('approval-test');`);
+ await assert.rejects(asUser(employee,`select consume_early_exit('approval-test');`),/approval/);
+ await assert.rejects(asUser(employee,`insert into work_submissions(employee_id,file_path,file_name,mime_type,size_bytes)values('${outsider}','${outsider}/file.xlsx','file.xlsx','application/octet-stream',10);`),/row-level security/);
+ await db.exec(`insert into shift_records(employee_id,device_shift_id,started_at,breaks)values('${employee}','legacy-naive','2026-11-18T11:53:00Z','[{"start":"2026-11-18T17:33:00","end":"2026-11-18T17:33:39","kind":"extra"}]');`);
+ await db.exec(await readFile(new URL('../supabase/migrations/20261118_008_break_timezone.sql',import.meta.url),'utf8'));
+ assert.match((await db.query("select break_timestamp('2026-11-18T17:33:00')::text as stamp")).rows[0].stamp,/12:03:00/);
+ assert.match((await db.query("select b.started_at::text as stamp from break_records b join shift_records s on s.id=b.shift_id where s.device_shift_id='legacy-naive'")).rows[0].stamp,/12:03:00/);
  }finally{await db.close();}
 });
