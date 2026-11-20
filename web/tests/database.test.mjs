@@ -86,5 +86,30 @@ test('Migration preserves history and enforces roles, notification receipts and 
  await asUser(employee,"select set_my_display_name('  Employee Display  ');");
  assert.deepEqual((await db.query('select name, display_name, employee_code from employees')).rows[0],
    {name:'Employee',display_name:'Employee Display',employee_code:'EMP-01'});
+
+ await db.exec(await readFile(new URL('../supabase/migrations/20261120_011_employee_leads.sql',import.meta.url),'utf8'));
+ const lead='00000000-0000-4000-8000-000000000021', duplicate='00000000-0000-4000-8000-000000000022';
+ const batch=[{id:lead,name:'Employee lead',phone:'+91 7654321011',institution:'Test institute'},
+   {id:duplicate,name:'Duplicate',phone:'7654321011'}];
+ const save=(uid,items)=>asUser(uid,`select save_my_leads('${JSON.stringify(items)}'::jsonb) as saved;`);
+ assert.equal((await save(employee,batch))[0].rows[0].saved,1);
+ assert.equal((await save(employee,batch))[0].rows[0].saved,0);
+ await assert.rejects(save(employee,[{id:duplicate,name:'Valid',phone:'6654321011'},
+   {id:'00000000-0000-4000-8000-000000000023',name:'Invalid',phone:'000'}]),/valid phone/);
+ assert.equal((await db.query('select count(*)::int as n from contacts where id=$1',[duplicate])).rows[0].n,0);
+ assert.deepEqual((await db.query('select assigned_employee_id,created_by_employee from contacts where id=$1',[lead])).rows[0],
+   {assigned_employee_id:employee,created_by_employee:employee});
+ await db.exec(`insert into employees(id,name,email,employee_code,auth_id)values('${outsider}','Second employee','outsider@example.com','EMP-02','${outsider}');`);
+ assert.equal((await asUser(outsider,`select id from contacts where id='${lead}';`))[0].rows.length,0);
+ await assert.rejects(save(outsider,[{...batch[0],edit:true}]),/Only leads/);
+ await save(employee,[{...batch[0],edit:true,name:'Updated lead'}]);
+ assert.equal((await db.query('select name from contacts where id=$1',[lead])).rows[0].name,'Updated lead');
+ await asUser(employee,`update call_records set contact_id='${lead}' where device_call_id='daily-call';
+   select review_my_call('daily-call','Follow-up','Web notes','2027-01-01T12:00:00Z');
+   update call_records set outcome='Not reviewed',notes='Old cache',duration_seconds=48 where device_call_id='daily-call';`);
+ assert.deepEqual((await db.query("select outcome,notes,duration_seconds from call_records where device_call_id='daily-call'")).rows[0],
+   {outcome:'Follow-up',notes:'Web notes',duration_seconds:48});
+ assert.equal((await db.query('select status from contacts where id=$1',[lead])).rows[0].status,'Follow-up');
+ await assert.rejects(asUser(outsider,"select review_my_call('daily-call','Busy','Other account');"),/not in your workspace/);
  }finally{await db.close();}
 });

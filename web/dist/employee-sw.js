@@ -19,6 +19,6 @@ firebase.initializeApp(config);
 firebase.messaging().onBackgroundMessage(payload=>{
   const id=payload.data?.notification_id;
   return self.registration.showNotification('Montme',{
-    body:'You have a new workspace notification.',tag:id,data:{notificationId:id}
+    body:'You have a new workspace notification.',icon:new URL('montme-mark.png',location.href).href,tag:id,data:{notificationId:id}
   });
 });

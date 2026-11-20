@@ -26,7 +26,7 @@ object MontmeAlerts {
         val intent = Intent(context, MainActivity::class.java).apply { flags=Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP; putExtra("open_notifications",true) }
         val pending = PendingIntent.getActivity(context,key.hashCode(),intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val builder = if(Build.VERSION.SDK_INT>=26) Notification.Builder(context,CHANNEL) else Notification.Builder(context)
-        val notification=builder.setSmallIcon(R.drawable.montme_notification).setContentTitle(title).setContentText(body).setStyle(Notification.BigTextStyle().bigText(body)).setAutoCancel(true).setContentIntent(pending).build()
+        val notification=builder.setSmallIcon(R.drawable.montme_status_icon).setContentTitle(title).setContentText(body).setStyle(Notification.BigTextStyle().bigText(body)).setAutoCancel(true).setContentIntent(pending).build()
         context.getSystemService(NotificationManager::class.java).notify(key,key.hashCode(),notification)
         shown.add(key);prefs.edit().putStringSet("shown",shown.toList().takeLast(1000).toSet()).apply()
         return true

@@ -44,7 +44,7 @@ export async function enableWebPush(repo,settings,onMessage){
   enableWebPush.unsubscribe?.();
   enableWebPush.unsubscribe=subscribe(messaging,payload=>{
     const id=payload.data?.notification_id;
-    registration.showNotification('Montme',{body:'You have a new workspace notification.',tag:id,data:{notificationId:id}}).catch(()=>{});
+    registration.showNotification('Montme',{body:'You have a new workspace notification.',icon:new URL('montme-mark.png',location.href).href,tag:id,data:{notificationId:id}}).catch(()=>{});
     onMessage?.();
   });
 }

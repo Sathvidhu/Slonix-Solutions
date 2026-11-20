@@ -271,8 +271,17 @@ extension _ActivityScreens on _WorkspaceState {
                     ),
                   );
                 } else {
-                  existing.outcome = outcome;
-                  existing.note = notes.text.trim();
+                  try {
+                    await s.reviewCall(
+                      existing,
+                      outcome,
+                      notes.text.trim(),
+                      due,
+                    );
+                  } catch (error) {
+                    if (ctx.mounted) message(ctx, error.toString());
+                    return;
+                  }
                 }
                 final selectedLead = s.leadFor(leadId)!;
                 selectedLead.status = switch (outcome) {

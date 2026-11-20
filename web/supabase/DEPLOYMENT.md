@@ -119,3 +119,7 @@ For background browser push, deploy the updated `deliver-notifications` Edge Fun
 5. New employee accounts and password resets email a greeting, employee ID, assigned password, email and access role to the employee's recorded email. The password is used only for Auth and this immediate email; it is not stored in notifications or database rows. If the email fails, the account remains saved and the admin sees the result. Set a fresh password to retry credential email; an old password cannot be recovered.
 
 Gmail uses TLS to smtp.gmail.com:465. Google may restrict app passwords on managed/Advanced Protection accounts and applies sending quotas. Provider acceptance is not proof of Inbox delivery; check Spam and Gmail Sent. Resend remains an optional fallback when Gmail secrets are absent. SMTP retries can produce duplicate messages after ambiguous network failures.
+
+### Employee lead creation and call reviews
+
+Apply `20261120_011_employee_leads.sql` after migration 010. Web lead creation and call review become available after PostgREST reloads the schema. Employee-created leads are assigned to their creator. Once synced, Android can display those leads through its existing company contact feed. The updated Android source also reads and writes shared call outcomes. Prior Android APKs can continue syncing call durations, but their cached outcomes do not overwrite shared reviews.

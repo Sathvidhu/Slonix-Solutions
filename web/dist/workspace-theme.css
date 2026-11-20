@@ -1,0 +1,19 @@
+﻿@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Manrope:wght@400;500;600;650;700;750;800&display=swap');
+:root{--orange:#F14625;--warm:#FF8C42;--burnt:#B63218;--charcoal:#191B20;--ink:#111827;--white:#fff;--bg:#F5F5F6;--muted:#64666D;--peach:#FFF1EB;--border:#DEDEE2;--green:#247354;--font-body:"DM Sans",sans-serif;--font-heading:"Manrope",sans-serif;}
+
+.workspace-logo {
+  position: relative;
+  display: block;
+  width: min(170px, 100%);
+  aspect-ratio: 972 / 142;
+  flex: none;
+  background: url('./montme-logo.png') center / contain no-repeat;
+}
+:is(.sidebar,.rail,.login-story,.login-brand) .workspace-logo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: inherit;
+  filter: brightness(0) invert(1);
+  clip-path: inset(0 0 0 25.5%);
+}

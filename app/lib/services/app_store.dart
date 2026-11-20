@@ -379,13 +379,15 @@ class AppStore extends ChangeNotifier {
           .firstOrNull
           ?.id;
       for (final remote in cloud.contacts) {
-        final old = leads
-            .where(
-              (l) =>
-                  map[l.id] == remote['id'] ||
-                  phoneKey(l.phone) == phoneKey(remote['phone'] as String),
-            )
-            .firstOrNull;
+        final old =
+            leads.where((lead) => map[lead.id] == remote['id']).firstOrNull ??
+            leads
+                .where(
+                  (lead) =>
+                      phoneKey(lead.phone) ==
+                      phoneKey(remote['phone'] as String),
+                )
+                .firstOrNull;
         final localId = old?.id ?? remote['id'] as String;
         map[localId] = remote['id'];
         final value = Lead(
@@ -407,10 +409,17 @@ class AppStore extends ChangeNotifier {
         }
       }
       await prefs.setString('montme.cloud.contacts', jsonEncode(map));
-      final callIds = calls.map((call) => call.id).toSet();
+      final localCalls = {for (final call in calls) call.id: call};
       for (final remote in cloud.syncedCalls) {
         final id = remote['device_call_id'] as String;
-        if (!callIds.add(id)) continue;
+        final local = localCalls[id];
+        if (local != null) {
+          if (remote['shared_review'] == true) {
+            local.outcome = remote['outcome'] as String;
+            local.note = remote['notes'] as String;
+          }
+          continue;
+        }
         final phone = remote['phone'] as String;
         final lead = leads
             .where(
@@ -808,6 +817,37 @@ class AppStore extends ChangeNotifier {
     }
     await save();
     await scheduleAttendanceAlerts();
+  }
+
+  Future<void> reviewCall(
+    CallEntry call,
+    String outcome,
+    String note,
+    DateTime? followUp,
+  ) async {
+    if (cloud.connected) {
+      await _companySync;
+      final remote = cloud.syncedCalls
+          .where((row) => row['device_call_id'] == call.id)
+          .firstOrNull;
+      if (remote?['shared_review'] is bool) {
+        await cloud.request(
+          '/rest/v1/rpc/review_my_call',
+          method: 'POST',
+          body: {
+            'call_input': call.id,
+            'outcome_input': outcome,
+            'notes_input': note,
+            'follow_up_input': followUp?.toUtc().toIso8601String(),
+          },
+        );
+        remote!['outcome'] = outcome;
+        remote['notes'] = note;
+        remote['shared_review'] = true;
+      }
+    }
+    call.outcome = outcome;
+    call.note = note;
   }
 
   Future<void> upsertLead(Lead lead) async {

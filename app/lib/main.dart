@@ -377,22 +377,12 @@ class Tag extends StatelessWidget {
 class Brand extends StatelessWidget {
   const Brand({super.key});
   @override
-  Widget build(BuildContext context) => const Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(Icons.stacked_bar_chart_rounded, size: 32, color: Color(0xFFF14625)),
-      SizedBox(width: 8),
-      Text(
-        'montme',
-        style: TextStyle(
-          fontSize: 25,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -1,
-          color: ink,
-        ),
-      ),
-      Text('•', style: TextStyle(fontSize: 28, color: teal)),
-    ],
+  Widget build(BuildContext context) => Image.asset(
+    'assets/montme_logo.png',
+    width: 154,
+    height: 32,
+    fit: BoxFit.contain,
+    semanticLabel: 'Montme',
   );
 }
 

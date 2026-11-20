@@ -6,9 +6,9 @@
     <application
         android:label="Montme"
         android:name=".MontmeApplication"
-        android:icon="@drawable/montme_icon">
+        android:icon="@drawable/montme_launcher">
         <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="montme_work" />
-        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/montme_notification" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/montme_status_icon" />
         <service android:name=".MontmeMessagingService" android:exported="false"><intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter></service>
         <receiver android:name=".MontmeAlarmReceiver" android:exported="false" />
         <receiver android:name=".MontmeBootReceiver" android:exported="false"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter></receiver>

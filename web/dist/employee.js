@@ -1,4 +1,5 @@
 import {Repository} from './api.js';
+import {workbook} from './xlsx.js';
 import {enableWebPush,disableWebPush,webPushEnabled} from './employee-push.js';
 
 const root=document.querySelector('#employee-app');
@@ -18,7 +19,7 @@ const pages={
   Work:'M5 5h14v16H5z M9 3h6v5H9z M9 13h6 M9 17h6',
   Settings:'M4 6h16 M4 12h16 M4 18h16 M8 4v4 M15 10v4 M10 16v4'
 };
-const brand='<div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>montme</div>';
+const brand='<span class="workspace-logo" role="img" aria-label="Montme"></span>';
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateTime=value=>value?new Intl.DateTimeFormat('en-IN',{timeZone:tz,dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'';
 const workDate=value=>new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
@@ -28,7 +29,14 @@ const table=(columns,rows)=>rows.length?`<div class="table-wrap"><table><thead><
 const safeLink=value=>{try{const url=new URL(value);return ['https:','http:'].includes(url.protocol)?url.href:null;}catch{return null;}};
 const rpc=(name,body={})=>repo.request('/rest/v1/rpc/'+name,{method:'POST',body});
 let data=null, view=location.hash==='#notifications'?'Notifications':'Today', busy=false, loading, timer;
-let pushReady=false, lastMarkup;
+let pushReady=false, lastMarkup, lastSync;
+let leadSearch='', leadStatus='', callDay='', leadWritesAvailable;
+const leadStatuses=['New','Contacted','Interested','Follow-up','Won','Not interested'];
+const outcomes=['Not reviewed','Interested','Follow-up','No answer','Busy','Wrong number','Not interested','Converted'];
+const options=(values,selected)=>values.map(value=>`<option ${value===selected?'selected':''}>${escape(value)}</option>`).join('');
+const localTime=value=>value?new Date(Date.parse(value)+19800000).toISOString().slice(0,16):'';
+const isoTime=value=>value?new Date(value+':00+05:30').toISOString():null;
+const visibleCalls=()=>calls().filter(c=>!callDay||workDate(c.started_at)===callDay);
 const current=()=>data?.shifts.find(s=>!s.ended_at);
 const calls=()=>data.calls;
 const notifications=()=>data.notifications.filter(n=>!n.cancelled_at&&Date.parse(n.available_at)<=Date.now());
@@ -65,7 +73,20 @@ async function load(){
       key,await repo.request(`/rest/v1/${table}?select=*${filter}`)
     ]));
     const reports=await repo.loadDailyReports(own);
+    const contacts=Object.fromEntries(entries).contacts;
+    if(leadWritesAvailable!==true){
+      leadWritesAvailable=contacts.some(contact=>Object.hasOwn(contact,'created_by_employee'));
+      if(!contacts.length){
+        try{
+          await repo.request('/rest/v1/contacts?select=created_by_employee&limit=0');
+          leadWritesAvailable=true;
+        }catch(error){
+          if(!['42703','PGRST204'].includes(error.code))throw error;
+        }
+      }
+    }
     data={employee,reports,...Object.fromEntries(entries)};
+    lastSync=new Date();
   })().finally(()=>loading=null);
   return loading;
 }
@@ -74,13 +95,14 @@ function loginScreen(message=''){
   clearInterval(timer);
   data=null;
   lastMarkup=null;
-  root.innerHTML=`<main class="login"><div class="card">${brand}<h1>Employee workspace</h1>
+  leadSearch=leadStatus=callDay='';
+  root.innerHTML=`<main class="login"><div class="login-brand">${brand}</div><div class="login-content"><div class="card"><h1>Employee workspace</h1>
     <p class="muted">Sign in with your company credentials.</p>
     <form id="employee-login"><div class="fields">
     <label>Employee ID or email<input name="login" required autocomplete="username"></label>
     <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
     </div><p class="error" role="alert">${escape(message)}</p><button class="btn primary">Sign in</button></form>
-    <p style="margin-top:14px"><a href="./">Admin workspace</a></p></div></main>`;
+    <p style="margin-top:14px"><a href="./">Admin workspace</a></p></div></div></main>`;
   const form=root.querySelector('form');
   form.addEventListener('submit',async event=>{
     event.preventDefault();
@@ -117,6 +139,8 @@ function today(){
   const canLeave=shift&&(Date.now()>=eligibleAt(shift)||early?.status==='approved');
   const day=workDate(Date.now());
   const todaysCalls=calls().filter(c=>workDate(c.started_at)===day);
+  const due=data.contacts.filter(c=>c.follow_up_at&&Date.parse(c.follow_up_at)<=Date.now())
+    .sort((a,b)=>Date.parse(a.follow_up_at)-Date.parse(b.follow_up_at));
   const openWork=data.assignments.filter(a=>!data.receipts.some(r=>r.assignment_id===a.id&&r.status==='completed'));
   return `<section class="card hero"><div><h2>${shift?(onBreak?'On break':'Clocked in'):'Ready to clock in?'}</h2>
     <p>${shift?'Started '+dateTime(shift.started_at):'Start a shift to record your work time.'}</p>
@@ -126,25 +150,51 @@ function today(){
     '<button class="btn on-dark" data-action="clock-in">Clock in</button>'}</div></section>
     <div class="metrics">${[['Business calls today',todaysCalls.length],['Call time today',duration(todaysCalls.reduce((n,c)=>n+c.duration_seconds,0))],['Open assignments',openWork.length]]
       .map(([label,value])=>`<section class="card metric"><span class="muted">${label}</span><strong>${value}</strong></section>`).join('')}</div>
+    <section class="card"><h2>Follow-ups due</h2>
+    ${due.length?table(['Lead','Due',''],due.map(c=>[escape(c.name),dateTime(c.follow_up_at),
+      `<div class="actions">${button('Edit lead','edit-lead',false,c.id)}${button('Complete follow-up','complete-follow-up',false,c.id)}</div>`])):
+      '<p class="muted">No follow-ups are due.</p>'}</section>
     <section class="card"><h2>Recent shifts</h2>${table(['Clock in','Clock out','Breaks'],data.shifts.slice(0,7).map(s=>[
       dateTime(s.started_at),s.ended_at?dateTime(s.ended_at):'In progress',s.breaks.length]))}</section>`;
 }
 
 function leads(){
-  return `<section class="card">${table(['Lead','Institution','Phone','Status','Follow-up',''],data.contacts.map(c=>[
-    escape(c.name),escape(c.institution||c.company),escape(c.phone),escape(c.status),dateTime(c.follow_up_at),
-    button('Update','edit-lead',false,c.id)]))}</section>`;
+  const q=leadSearch.toLocaleLowerCase();
+  const leads=data.contacts.filter(c=>(!leadStatus||c.status===leadStatus)&&
+    [c.name,c.institution,c.company,c.phone,c.notes].some(v=>String(v||'').toLocaleLowerCase().includes(q)));
+  return `<section class="card">
+    <div class="actions section-tools">
+      ${leadWritesAvailable?`${button('Add lead','new-lead',true)}${button('Bulk add leads','bulk-leads')}`:
+      '<p class="muted">Lead creation requires the company backend upgrade.</p>'}
+    </div>
+    <form class="filters" data-filter="leads">
+      <label>Search leads<input name="search" type="search" value="${escape(leadSearch)}" placeholder="Name, institution or phone"></label>
+      <label>Status<select name="status"><option value="">All statuses</option>${options(leadStatuses,leadStatus)}</select></label>
+      <button class="btn">Apply filters</button>
+    </form>
+    ${table(['Lead','Institution','Phone','Status','Follow-up',''],leads.map(c=>[
+      escape(c.name),escape(c.institution||c.company),escape(c.phone),escape(c.status),dateTime(c.follow_up_at),
+      `<div class="actions">${button('Edit lead','edit-lead',false,c.id)}
+      ${c.follow_up_at?button('Complete follow-up','complete-follow-up',false,c.id):''}</div>`]))}</section>`;
 }
 function callList(){
-  return `<section class="card"><div class="actions" style="margin-bottom:12px">${button('Log a call','log-call',true)}</div>
-    ${table(['Time','Lead','Phone','Direction','Duration','Outcome','Notes'],calls().map(c=>[
+  return `<section class="card"><div class="actions section-tools">${button('Log a call','log-call',true)}
+    ${button('Export calls to Excel','export-calls')}</div>
+    <form class="filters" data-filter="calls"><label>Call date (IST)<input name="day" type="date" value="${escape(callDay)}"></label>
+    <button class="btn">Apply filter</button>${callDay?`<button class="btn" type="button" data-action="clear-call-filter">All dates</button>`:''}</form>
+    ${table(['Time','Lead','Phone','Direction','Duration','Outcome','Notes',''],visibleCalls().map(c=>[
       dateTime(c.started_at),escape(c.lead_name||data.contacts.find(l=>l.id===c.contact_id)?.name),
-      escape(c.phone),escape(c.direction),duration(c.duration_seconds),escape(c.outcome),escape(c.notes)]))}</section>`;
+      escape(c.phone),escape(c.direction),duration(c.duration_seconds),escape(c.outcome),escape(c.notes),
+      leadWritesAvailable?button('Edit outcome','review-call',false,c.id):'']))}</section>`;
 }
 function reports(){
-  return `<section class="card"><h2>Submitted Daily Work Reports</h2>
+  return `<section class="card"><h2>Call activity</h2>
+    <p>${calls().length} saved calls &middot; ${duration(calls().reduce((total,c)=>total+c.duration_seconds,0))} of call time</p>
+    ${button('Export all calls to Excel','export-all-calls')}</section>
+    <section class="card"><h2>Submitted Daily Work Reports</h2>
     ${!repo.attendanceAvailable?'<p class="muted">Daily Work Reports require the company backend upgrade.</p>':table(['Work date (IST)','Clock in','Clock out','Business calls',''],data.reports.map(r=>[
-    escape(r.work_day),dateTime(r.started_at),dateTime(r.ended_at),r.calls.length,button('View report','report',false,r.id)]))}</section>`;
+    escape(r.work_day),dateTime(r.started_at),dateTime(r.ended_at),r.calls.length,
+    `<div class="actions">${button('View report','report',false,r.id)}${button('Download Excel','export-report',false,r.id)}</div>`]))}</section>`;
 }
 function work(){
   return `<div class="stack">${data.assignments.map(a=>{
@@ -197,15 +247,16 @@ function render(){
     ${button('Sign out','sign-out')}</div></header>
     <main class="main"><header><div><h1>${titles[view]}</h1>
     ${view==='Today'?`<p class="muted">${new Intl.DateTimeFormat('en-IN',{timeZone:tz,dateStyle:'full'}).format(new Date())}</p>`:''}</div>
-    ${button('Refresh','refresh')}</header>${content[view]()}</main></div></div>`;
+    <div class="actions"><small id="employee-sync" class="muted"></small>${button('Refresh','refresh')}</div></header>${content[view]()}</main></div></div>`;
   if(markup!==lastMarkup){
     root.innerHTML=markup;
     lastMarkup=markup;
   }
+  root.querySelector('#employee-sync').textContent=lastSync?'Last synced '+dateTime(lastSync):'';
 }
 async function refresh(){
   await load();
-  if(!dialog.open)render();
+  if(!dialog.open&&!document.activeElement?.closest('[data-filter]'))render();
 }
 async function start(){
   await load();
@@ -270,30 +321,107 @@ async function upload(file){
     throw error;
   }
 }
-function contactForm(contact){
-  const statuses=['New','Contacted','Interested','Follow-up','Won','Not interested'];
-  openDialog('Update lead',`<div class="fields"><label>Status<select name="status">${statuses.map(s=>
-    `<option ${contact.status===s?'selected':''}>${s}</option>`).join('')}</select></label>
-    <label>Notes<textarea name="notes" maxlength="10000">${escape(contact.notes)}</textarea></label>
-    <label>Follow-up (IST)<input type="datetime-local" name="follow" value="${contact.follow_up_at?new Date(Date.parse(contact.follow_up_at)+19800000).toISOString().slice(0,16):''}"></label></div>`,
-    'Save lead',form=>rpc('update_my_contact',{contact_id_input:contact.id,status_input:form.get('status'),
-      notes_input:form.get('notes'),follow_up_input:form.get('follow')?new Date(form.get('follow')+':00+05:30').toISOString():null}));
+function leadFields(contact){
+  return `<label>Status<select name="status">${options(leadStatuses,contact?.status||'New')}</select></label>
+    <label>Notes<textarea name="notes" maxlength="10000">${escape(contact?.notes)}</textarea></label>
+    <label>Follow-up (IST)<input type="datetime-local" name="follow" value="${localTime(contact?.follow_up_at)}"></label>`;
 }
-function callForm(){
-  if(!data.contacts.length)throw Error('You need an assigned lead to log a call.');
-  openDialog('Log a business call',`<div class="fields"><label>Lead<select name="lead" required>
-    ${data.contacts.map(c=>`<option value="${escape(c.id)}">${escape(c.name)}</option>`).join('')}</select></label>
-    <label>Direction<select name="direction"><option>Outgoing</option><option>Incoming</option><option>Missed</option><option>Rejected</option></select></label>
-    <label>Duration in seconds<input name="duration" type="number" min="0" value="0" required></label>
-    <label>Notes<textarea name="notes" maxlength="10000"></textarea></label></div>`,'Save call',form=>{
-    const contact=data.contacts.find(c=>c.id===form.get('lead'));
-    return repo.request('/rest/v1/call_records',{method:'POST',body:{
-      employee_id:data.employee.id,contact_id:contact.id,device_call_id:crypto.randomUUID(),
-      phone:contact.phone,lead_name:contact.name,started_at:new Date().toISOString(),source:'Manual',
-      direction:form.get('direction'),duration_seconds:Number(form.get('duration')),notes:form.get('notes')}});
+function updateContact(contact,status,notes,follow){
+  return rpc('update_my_contact',{contact_id_input:contact.id,status_input:status,notes_input:notes,follow_up_input:follow});
+}
+function contactForm(contact){
+  const editDetails=!contact||leadWritesAvailable&&contact.created_by_employee===data.employee.id;
+  const id=contact?.id||crypto.randomUUID();
+  openDialog(contact?'Edit lead':'Add lead',`<div class="fields">${editDetails?`
+    <label>Name<input name="name" maxlength="120" required value="${escape(contact?.name)}"></label>
+    <label>Phone<input name="phone" type="tel" maxlength="40" required value="${escape(contact?.phone)}"></label>
+    <label>Institution<input name="institution" maxlength="200" value="${escape(contact?.institution||contact?.company)}"></label>`:''}
+    ${leadFields(contact)}</div>`,'Save lead',async form=>{
+    const status=form.get('status'),notes=form.get('notes'),follow=isoTime(form.get('follow'));
+    if(!editDetails)return updateContact(contact,status,notes,follow);
+    const saved=await rpc('save_my_leads',{leads_input:[{id,edit:Boolean(contact),
+      name:form.get('name'),phone:form.get('phone'),institution:form.get('institution'),
+      status,notes,follow_up_at:follow}]});
+    announce(saved?'Lead saved.':'A matching lead is already in your workspace.');
   });
 }
-
+function bulkLeadForm(){
+  const ids=new Map();
+  openDialog('Bulk add leads',`<p>Paste up to 200 leads, one per line, as Name | Phone | Institution. Duplicate phone numbers are skipped.</p>
+    <div class="fields"><label>Leads<textarea name="lines" required placeholder="Asha Rao | +919876543210 | Example Institute"></textarea></label></div>`,
+    'Add leads',async form=>{
+      const lines=form.get('lines').split(/\r?\n/).filter(line=>line.trim());
+      if(!lines.length||lines.length>200)throw Error('Enter 1 to 200 leads at a time.');
+      const leads=lines.map((line,i)=>{
+        const fields=line.split('|').map(value=>value.trim());
+        const [name,phone,institution='']=fields;
+        if(fields.length<2||fields.length>3||!name||name.length>120||institution.length>200||phone.length>40||
+          !/^\+?[0-9 ()-]+$/.test(phone)||!/^\d{7,15}$/.test(phone.replace(/\D/g,'')))throw Error(`Check lead row ${i+1}.`);
+        if(!ids.has(line))ids.set(line,crypto.randomUUID());
+        return {id:ids.get(line),name,phone,institution};
+      });
+      const saved=await rpc('save_my_leads',{leads_input:leads});
+      announce(`${saved} added. ${leads.length-saved} duplicates skipped.`);
+    });
+}
+function callReviewFields(call){
+  const lead=data.contacts.find(c=>c.id===call?.contact_id);
+  return `<label>Outcome<select name="outcome">${options(outcomes,call?.outcome||'Not reviewed')}</select></label>
+    <label>Notes<textarea name="notes" maxlength="10000">${escape(call?.notes)}</textarea></label>
+    ${leadWritesAvailable?`<label>Next follow-up (IST)<input name="follow" type="datetime-local" value="${localTime(lead?.follow_up_at)}"></label>`:''}`;
+}
+function reviewCall(id,form){
+  return rpc('review_my_call',{call_input:id,outcome_input:form.get('outcome'),notes_input:form.get('notes'),
+    follow_up_input:isoTime(form.get('follow'))});
+}
+function callForm(call){
+  if(call){
+    openDialog('Edit call outcome',`<div class="fields">${callReviewFields(call)}</div>`,'Save outcome',
+      form=>reviewCall(call.device_call_id,form));
+    return;
+  }
+  if(!data.contacts.length)throw Error('Add a lead or ask your admin to assign one before logging a call.');
+  const id=crypto.randomUUID();
+  openDialog('Log a business call',`<div class="fields"><label>Lead<select name="lead" required>
+    ${data.contacts.map(c=>`<option value="${escape(c.id)}">${escape(c.name)}</option>`).join('')}</select></label>
+    <label>Call time (IST)<input type="datetime-local" name="at" required value="${localTime(new Date())}"></label>
+    <label>Direction<select name="direction"><option>Outgoing</option><option>Incoming</option><option>Missed</option><option>Rejected</option></select></label>
+    <label>Duration in seconds<input name="duration" type="number" min="0" max="86400" value="0" required></label>
+    ${callReviewFields()}</div>`,'Save call',async form=>{
+    const contact=data.contacts.find(c=>c.id===form.get('lead'));
+    const at=isoTime(form.get('at')),direction=form.get('direction'),seconds=Number(form.get('duration'));
+    if(Date.parse(at)>Date.now())throw Error('A call cannot be logged in the future.');
+    if(['Missed','Rejected'].includes(direction)&&seconds)throw Error('Missed and rejected calls must have zero talk time.');
+    await repo.request('/rest/v1/call_records?on_conflict=employee_id,device_call_id',{method:'POST',
+      headers:{Prefer:'resolution=ignore-duplicates'},body:{
+      employee_id:data.employee.id,contact_id:contact.id,device_call_id:id,
+      phone:contact.phone,lead_name:contact.name,started_at:at,source:'Manual',
+      direction,duration_seconds:seconds,outcome:form.get('outcome'),notes:form.get('notes')}});
+    if(leadWritesAvailable)await reviewCall(id,form);
+  });
+}
+function downloadWorkbook(name,rows){
+  const url=URL.createObjectURL(new Blob([workbook(rows)],{
+    type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  const link=document.createElement('a');
+  link.href=url;link.download=name;link.click();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+}
+function callRows(records){
+  return [['Call time (IST)','Lead','Phone','Direction','Duration seconds','Outcome','Notes'],
+    ...records.map(c=>[dateTime(c.started_at),c.lead_name||data.contacts.find(l=>l.id===c.contact_id)?.name,
+      c.phone,c.direction,c.duration_seconds,c.outcome,c.notes])];
+}
+document.addEventListener('submit',event=>{
+  const form=event.target;
+  if(!form.dataset.filter)return;
+  event.preventDefault();
+  const values=new FormData(form);
+  if(form.dataset.filter==='leads'){
+    leadSearch=values.get('search').trim();leadStatus=values.get('status');
+  }else callDay=values.get('day');
+  render();
+});
 async function handle(action,id){
   const shift=current();
   switch(action){
@@ -321,6 +449,26 @@ async function handle(action,id){
       const pause=shift.breaks.at(-1);
       if(pause&&!pause.end){await change(null);break;}
       openDialog('Start break','<div class="fields"><label>Break type<select name="kind"><option value="">Scheduled break</option><option value="lunch">Lunch</option><option value="evening">Evening</option><option value="extra">Extra break</option></select></label></div>','Start break',form=>change(form.get('kind')||null));
+      break;
+    }
+    case 'new-lead': contactForm();break;
+    case 'bulk-leads': bulkLeadForm();break;
+    case 'complete-follow-up': {
+      const lead=data.contacts.find(c=>c.id===id);
+      openDialog('Complete follow-up','<p>Clear the scheduled follow-up for this lead?</p>','Complete',
+        ()=>updateContact(lead,lead.status,lead.notes,null));
+      break;
+    }
+    case 'clear-call-filter': callDay='';render();break;
+    case 'review-call': callForm(calls().find(c=>c.id===id));break;
+    case 'export-calls': downloadWorkbook('montme-calls.xlsx',callRows(visibleCalls()));break;
+    case 'export-all-calls': downloadWorkbook('montme-calls.xlsx',callRows(calls()));break;
+    case 'export-report':{
+      const report=data.reports.find(r=>r.id===id);
+      downloadWorkbook(`daily-work-report-${report.work_day}.xlsx`,[
+        ['Work date (IST)','Clock in','Clock out'],[report.work_day,dateTime(report.started_at),dateTime(report.ended_at)],
+        [],['Break','Start','End'],...report.breaks.map(b=>[b.kind,dateTime(b.start),dateTime(b.end)]),
+        [],...callRows(report.calls)]);
       break;
     }
     case 'edit-lead': contactForm(data.contacts.find(c=>c.id===id));break;
