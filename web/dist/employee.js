@@ -96,13 +96,21 @@ function loginScreen(message=''){
   data=null;
   lastMarkup=null;
   leadSearch=leadStatus=callDay='';
-  root.innerHTML=`<main class="login"><div class="login-brand">${brand}</div><div class="login-content"><div class="card"><h1>Employee workspace</h1>
-    <p class="muted">Sign in with your company credentials.</p>
-    <form id="employee-login"><div class="fields">
-    <label>Employee ID or email<input name="login" required autocomplete="username"></label>
-    <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
-    </div><p class="error" role="alert">${escape(message)}</p><button class="btn primary">Sign in</button></form>
-    <p style="margin-top:14px"><a href="./">Admin workspace</a></p></div></div></main>`;
+  root.innerHTML=`<main class="workspace-signin">
+    <aside class="signin-brand">${brand}</aside>
+    <section class="signin-content"><div class="signin-form">
+      <h1>Employee sign in</h1>
+      <p>Use your employee ID or company email to open your workspace.</p>
+      <form id="employee-login">
+        <div class="fields">
+          <label>Employee ID or email<input name="login" required autocomplete="username"></label>
+          <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
+        </div>
+        <p class="error" role="alert">${escape(message)}</p>
+        <button class="btn primary">Sign in <span aria-hidden="true">→</span></button>
+      </form>
+    </div></section>
+  </main>`;
   const form=root.querySelector('form');
   form.addEventListener('submit',async event=>{
     event.preventDefault();

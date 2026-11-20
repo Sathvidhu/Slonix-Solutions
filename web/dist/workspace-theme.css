@@ -1,5 +1,4 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Manrope:wght@400;500;600;650;700;750;800&display=swap');
-:root{--orange:#F14625;--warm:#FF8C42;--burnt:#B63218;--charcoal:#191B20;--ink:#111827;--white:#fff;--bg:#F5F5F6;--muted:#64666D;--peach:#FFF1EB;--border:#DEDEE2;--green:#247354;--font-body:"DM Sans",sans-serif;--font-heading:"Manrope",sans-serif;}
+:root{--orange:#F14625;--warm:#FF8C42;--burnt:#B63218;--charcoal:#191B20;--ink:#111827;--white:#fff;--bg:#F5F5F6;--muted:#64666D;--peach:#FFF1EB;--border:#DEDEE2;--green:#247354;--font-body:"Times New Roman",Times,"Liberation Serif",serif;--font-heading:var(--font-body);}
 
 .workspace-logo {
   position: relative;
@@ -9,11 +8,83 @@
   flex: none;
   background: url('./montme-logo.png') center / contain no-repeat;
 }
-:is(.sidebar,.rail,.login-story,.login-brand) .workspace-logo::after {
+:is(.sidebar,.rail,.signin-brand) .workspace-logo::after {
   content: "";
   position: absolute;
   inset: 0;
   background: inherit;
   filter: brightness(0) invert(1);
   clip-path: inset(0 0 0 25.5%);
+}
+
+.workspace-signin {
+  display: grid;
+  min-height: 100svh;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+  background: var(--white);
+}
+.signin-brand {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  padding: clamp(24px, 7vw, 92px);
+  background: radial-gradient(ellipse at 78% 90%, #4b261e, transparent 58%), var(--charcoal);
+}
+.signin-brand::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: min(52vw, 700px);
+  aspect-ratio: 1;
+  left: -22%;
+  bottom: -32%;
+  border: 1px solid #fb8c6338;
+  border-radius: 50%;
+  box-shadow: 0 0 0 48px #fb8c6314, 0 0 0 96px #fb8c630d, 0 0 0 144px #fb8c6307;
+}
+.signin-brand .workspace-logo { width: min(340px, 100%); }
+.signin-content { display: grid; place-items: center; padding: clamp(24px, 6vw, 84px); }
+.signin-form {
+  width: min(100%, 420px);
+  padding: clamp(0px, 2.6vw, 32px);
+}
+.signin-form h1 {
+  font-family: var(--font-heading);
+  margin: 0 0 10px;
+  font-size: clamp(2.35rem, 4vw, 3.5rem);
+  line-height: 1.06;
+  letter-spacing: -.035em;
+}
+.signin-form > p { color: var(--muted); margin: 0 0 28px; font-size: 1.12rem; line-height: 1.45; }
+.signin-form .fields { margin: 0; gap: 14px; }
+.signin-form .form-field { margin-bottom: 14px; }
+.signin-form label { color: var(--ink); font-size: 1.02rem; font-weight: bold; }
+.signin-form input {
+  min-height: 46px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font: inherit;
+}
+.signin-form input:focus-visible { outline: 2px solid var(--burnt); outline-offset: 2px; }
+.signin-form button[type=submit], .signin-form form > .primary {
+  width: 100%;
+  min-height: 46px;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-inline: 15px;
+  font-size: 1.1rem;
+}
+.signin-form .error:empty { display: none; }
+.signin-form .signin-setup { margin-block: 18px 0; }
+@media (max-width: 720px) {
+  .workspace-signin { grid-template-columns: 1fr; grid-template-rows: minmax(126px, 24svh) 1fr; }
+  .signin-brand .workspace-logo { width: min(205px, 74%); }
+  .signin-brand::before { width: 80vw; left: -18%; bottom: -115%; }
+  .signin-content { place-items: start center; padding-top: 42px; }
+  .signin-form { padding: 0; }
 }

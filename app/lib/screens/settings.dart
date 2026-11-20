@@ -419,7 +419,7 @@ extension _SettingsScreens on _WorkspaceState {
           child: SingleChildScrollView(
             child: SelectableText(
               data,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+              style: const TextStyle(fontSize: 11),
             ),
           ),
         ),

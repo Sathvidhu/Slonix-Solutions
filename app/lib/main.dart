@@ -61,6 +61,8 @@ class MontmeApp extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
       useMaterial3: true,
+      fontFamily: 'Times New Roman',
+      fontFamilyFallback: const ['Times', 'serif'],
       scaffoldBackgroundColor: canvas,
       colorScheme: ColorScheme.fromSeed(
         seedColor: teal,
