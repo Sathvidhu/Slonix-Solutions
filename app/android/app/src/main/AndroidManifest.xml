@@ -6,6 +6,8 @@
     <application
         android:label="Montme"
         android:name=".MontmeApplication"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/montme_data_extraction"
         android:icon="@drawable/montme_launcher">
         <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="montme_work" />
         <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/montme_status_icon" />

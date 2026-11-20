@@ -42,8 +42,12 @@ const calls=()=>data.calls;
 const notifications=()=>data.notifications.filter(n=>!n.cancelled_at&&Date.parse(n.available_at)<=Date.now());
 const read=id=>data.notificationReceipts.some(r=>r.notification_id===id&&r.read_at);
 
-function announce(message){
-  status.textContent=message;
+function announce(message,tone='info'){
+  status.dataset.tone=tone;
+  const close=document.createElement('button');
+  close.type='button';close.className='workspace-toast-dismiss';close.textContent='Dismiss';
+  close.onclick=()=>status.replaceChildren();
+  status.replaceChildren(document.createTextNode(message),close);
   clearTimeout(announce.timer);
   announce.timer=setTimeout(()=>status.textContent='',5000);
 }
@@ -69,10 +73,12 @@ async function load(){
       settings:['workspace_settings',''],
       submissions:['work_submissions',own+'&order=created_at.desc'],
     };
-    const entries=await Promise.all(Object.entries(queries).map(async ([key,[table,filter]])=>[
-      key,await repo.request(`/rest/v1/${table}?select=*${filter}`)
-    ]));
-    const reports=await repo.loadDailyReports(own);
+    const [entries,reports]=await Promise.all([
+      Promise.all(Object.entries(queries).map(async ([key,[table,filter]])=>[
+        key,await repo.request(`/rest/v1/${table}?select=*${filter}`)
+      ])),
+      repo.loadDailyReports(own)
+    ]);
     const contacts=Object.fromEntries(entries).contacts;
     if(leadWritesAvailable!==true){
       leadWritesAvailable=contacts.some(contact=>Object.hasOwn(contact,'created_by_employee'));
@@ -119,6 +125,10 @@ function loginScreen(message=''){
     status.textContent='';
     const submit=form.querySelector('button');
     submit.disabled=true;
+    submit.classList.add('is-pending');
+    submit.textContent='Signing in…';
+    form.setAttribute('aria-busy','true');
+    form.querySelector('.error').textContent='';
     try{
       const email=login.includes('@');
       const session=await repo.request(email?'/auth/v1/token?grant_type=password':'/functions/v1/employee-login',
@@ -128,7 +138,11 @@ function loginScreen(message=''){
     }catch(error){
       await repo.logout();
       form.querySelector('.error').textContent=error.message;
+    }finally{
       submit.disabled=false;
+      submit.classList.remove('is-pending');
+      submit.textContent='Sign in';
+      form.removeAttribute('aria-busy');
     }
   });
 }
@@ -264,6 +278,10 @@ function render(){
 }
 async function refresh(){
   await load();
+  if(status.dataset.offline){
+    delete status.dataset.offline;
+    announce('Connection restored.','success');
+  }
   if(!dialog.open&&!document.activeElement?.closest('[data-filter]'))render();
 }
 async function start(){
@@ -277,9 +295,12 @@ async function start(){
     if(document.hidden||busy)return;
     refresh().catch(error=>{
       if(!repo.session)loginScreen(error.message);
-      else announce('Connection interrupted. Displaying the last synced records.');
+      else if(!status.dataset.offline){
+        status.dataset.offline='true';
+        announce('Connection interrupted. You are viewing the last synced records.','error');
+      }
     });
-  },5000);
+  },20000);
 }
 window.addEventListener('hashchange',()=>{
   if(location.hash==='#notifications'&&data){view='Notifications';render();}
@@ -297,6 +318,11 @@ function openDialog(title,body,submitLabel,submit){
     const values=new FormData(form);
     busy=true;
     const controls=[...form.querySelectorAll('button,input,select,textarea')];
+    const submitButton=form.querySelector('button[type=submit]');
+    form.querySelector('.error').textContent='';
+    form.setAttribute('aria-busy','true');
+    submitButton.classList.add('is-pending');
+    submitButton.textContent='Saving…';
     controls.forEach(control=>control.disabled=true);
     try{
       await submit(values);
@@ -304,9 +330,12 @@ function openDialog(title,body,submitLabel,submit){
       await refresh();
     }catch(error){
       if(dialog.open)form.querySelector('.error').textContent=error.message;
-      else announce(error.message);
+      else announce(error.message,'error');
     }finally{
       busy=false;
+      form.removeAttribute('aria-busy');
+      submitButton.classList.remove('is-pending');
+      submitButton.textContent=submitLabel;
       controls.forEach(control=>control.disabled=false);
     }
   });
@@ -433,18 +462,18 @@ document.addEventListener('submit',event=>{
 async function handle(action,id){
   const shift=current();
   switch(action){
-    case 'refresh': await refresh();break;
+    case 'refresh': await refresh();announce('Workspace refreshed.','success');break;
     case 'sign-out':
       await disableWebPush(repo).catch(()=>{});
       pushReady=false;
       await repo.request('/auth/v1/logout?scope=local',{method:'POST'}).catch(()=>{});
       repo.session=null;sessionStorage.removeItem(repo.authStorageKey);
       loginScreen();break;
-    case 'clock-in': await rpc('clock_in');announce('Clocked in.');break;
+    case 'clock-in': await rpc('clock_in');announce('Clocked in.','success');break;
     case 'clock-out':
       if(!shift)return;
       openDialog('Daily Work Report','<p>Submit this shift’s work time, breaks and synced business calls to your company to clock out. If you logged calls on Android, sync the phone before submitting here.</p>',
-        'Submit report and clock out',async()=>{await rpc('submit_daily_report',{shift_input:shift.device_shift_id});announce('Daily Work Report submitted. You’re clocked out.');});
+        'Submit report and clock out',async()=>{await rpc('submit_daily_report',{shift_input:shift.device_shift_id});announce('Daily Work Report submitted. You’re clocked out.','success');});
       break;
     case 'early':
       if(!shift)return;
@@ -509,9 +538,9 @@ async function handle(action,id){
       break;
     case 'enable-push':
       await enableWebPush(repo,data.settings[0]?.firebase_config,()=>refresh().catch(()=>{}));
-      pushReady=true;announce('Browser notifications enabled.');break;
+      pushReady=true;render();announce('Browser notifications enabled.','success');break;
     case 'disable-push':
-      await disableWebPush(repo);pushReady=false;announce('Browser notifications disabled.');break;
+      await disableWebPush(repo);pushReady=false;render();announce('Browser notifications disabled.');break;
   }
 }
 document.addEventListener('click',async event=>{
@@ -520,12 +549,12 @@ document.addEventListener('click',async event=>{
   if(control.dataset.view){view=control.dataset.view;render();return;}
   if(control.dataset.action==='cancel'){dialog.close();return;}
   if(!data)return;
-  busy=true;control.disabled=true;
+  busy=true;control.disabled=true;control.classList.add('is-pending');
   try{
     await handle(control.dataset.action,control.dataset.id);
-    if(data&&!dialog.open)await refresh();
-  }catch(error){announce(error.message);}
-  finally{busy=false;control.disabled=false;}
+    if(data&&!dialog.open&&['clock-in','break','read-notification','work-read','work-complete'].includes(control.dataset.action))await refresh();
+  }catch(error){announce(error.message,'error');}
+  finally{busy=false;control.disabled=false;control.classList.remove('is-pending');}
 });
 
 if(repo.session)start().catch(async error=>{

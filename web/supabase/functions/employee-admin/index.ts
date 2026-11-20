@@ -19,11 +19,21 @@ export const handler=endpoint(async(req)=>{
    const result=await api(`/rest/v1/employees${id?'?id=eq.'+encodeURIComponent(id):''}`,{method:id?'PATCH':'POST',body:{...row,auth_id:authId},prefer:'return=representation'});
    let welcome_email:any=null;
    if(password){
-     welcome_email={status:'blocked',message:'Configure GMAIL_USER and GMAIL_APP_PASSWORD in Supabase secrets, then reset the password to send a fresh welcome email.'};
+     welcome_email={status:'blocked',message:'Email delivery is unavailable. Share sign-in instructions through your approved onboarding channel.'};
      if(emailReady())try{
-       await sendEmail([email],created?'Welcome to Montme - your employee login':'Montme - your updated employee login',`Hello ${name},\n\nWelcome to Montme. Your admin has ${created?'created':'updated'} your employee account.\n\nEmployee ID: ${employee_code}\nPassword: ${password}\nWork email: ${email}\nAccess role: ${role.name}\n\nOpen the Montme employee app and sign in using this employee ID and password. Keep this email private.\n\nRegards,\nMontme Admin`, 'montme-welcome-'+crypto.randomUUID());
-       welcome_email={status:'sent',message:'Accepted by email provider; check Inbox and Spam.'};
-     }catch{welcome_email={status:'failed',message:'Account saved, but the welcome email failed. Check Gmail secrets and try a new password reset.'};}
+       await sendEmail([email],created?'Welcome to Montme':'Your Montme password was updated',
+         `Hello ${name},
+
+Your Montme account was ${created?'created':'updated'}.
+
+Employee ID: ${employee_code}
+
+Contact your company admin for secure sign-in instructions. If you did not expect this change, contact your company admin immediately.`,
+         'montme-welcome-'+crypto.randomUUID());
+       welcome_email={status:'sent',message:'Account notice accepted by email provider. Share the temporary password separately through your approved secure channel.'};
+     }catch{
+       welcome_email={status:'failed',message:'The account was saved. The account notice could not be sent.'};
+     }
    }
    return {employee:result[0],account_created:created,welcome_email};
  }catch(e){if(created){try{await api(`/auth/v1/admin/users/${authId}`,{method:'DELETE'});}catch{}}else if(old){try{await api(`/auth/v1/admin/users/${authId}`,{method:'PUT',body:{email:old.email,ban_duration:old.active?'none':'876000h'}});}catch{}}throw e;}

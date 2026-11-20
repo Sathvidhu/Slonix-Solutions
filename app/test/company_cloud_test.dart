@@ -6,6 +6,25 @@ import 'package:montme/services/company_cloud.dart';
 
 void main() {
   test(
+    'Missing attendance function explains the company server upgrade',
+    () async {
+      final cloud = CompanyCloud(
+        persistSession: false,
+        client: MockClient(
+          (_) async => http.Response(
+            '{"code":"PGRST202","message":"Function not in schema cache"}',
+            404,
+          ),
+        ),
+      );
+      await expectLater(
+        cloud.request('/rest/v1/rpc/clock_in', method: 'POST', body: {}),
+        throwsA(isA<AttendanceUnavailable>()),
+      );
+    },
+  );
+
+  test(
     'Company sign-in requires an enrolled employee, not just a valid token',
     () async {
       final cloud = CompanyCloud(

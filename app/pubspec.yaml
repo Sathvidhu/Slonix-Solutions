@@ -1,7 +1,7 @@
 name: montme
 description: Employee attendance, business calling and follow-up workspace.
 publish_to: none
-version: 0.6.0+6
+version: 0.6.2+8
 environment:
   sdk: ^3.10.3
 dependencies:

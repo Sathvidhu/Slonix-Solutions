@@ -289,10 +289,43 @@ Widget field(
   validator: (v) =>
       required && (v == null || v.trim().isEmpty) ? 'Enter $label' : null,
 );
-void message(BuildContext context, String text) =>
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text), behavior: SnackBarBehavior.floating),
+String workspaceError(Object error) {
+  if (error is TimeoutException) {
+    return 'The company connection timed out. Reload to check the latest status.';
+  }
+  return switch (error) {
+    FormatException(:final message) => message.toString(),
+    StateError(:final message) => message.toString(),
+    _ => error.toString(),
+  };
+}
+
+void message(BuildContext context, String text, {bool error = false}) {
+  final messenger = ScaffoldMessenger.of(context);
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              error ? Icons.error_outline : Icons.info_outline,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(text)),
+          ],
+        ),
+        backgroundColor: error
+            ? const Color(0xFF822A1D)
+            : const Color(0xFF22262C),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: error ? 7 : 4),
+        showCloseIcon: true,
+      ),
     );
+}
+
 Widget pageHeading(String title, String subtitle) => Padding(
   padding: const EdgeInsets.only(top: 20, bottom: 26),
   child: Column(

@@ -1,3 +1,23 @@
+async function fetchJson(url, options, timeout=15000){
+ const controller=new AbortController();
+ const timer=setTimeout(()=>controller.abort(),timeout);
+ try{
+  const response=await fetch(url,{...options,signal:controller.signal});
+  const body=await response.text();
+  let data=null;
+  if(body){
+   try{data=JSON.parse(body);}
+   catch{if(response.ok)throw Error('The company server returned an unexpected response.');}
+  }
+  return {response,data};
+ }catch(error){
+  if(controller.signal.aborted)throw Error(options.method==='GET'
+    ?'This took too long. Check your connection and try again.'
+    :'The request timed out. Refresh to check whether it completed before trying again.');
+  if(error instanceof TypeError)throw Error('Could not reach the company server. Check your connection and try again.');
+  throw error;
+ }finally{clearTimeout(timer);}
+}
 const CONFIG_KEY='montme.admin.config', DATA_KEY='montme.admin.local.v1';
 export const emptyData=()=>({employees:[],contacts:[],content:[],assignments:[],receipts:[],calls:[],shifts:[],roles:[{id:'preview-employee',name:'Employee',permissions:[]}],breaks:[],exits:[],submissions:[],dailyReports:[],activity:[],notifications:[],notificationReceipts:[],deliveries:[],settings:[{id:true,lunch_start:'13:30',lunch_end:'14:30',evening_start:'17:00',evening_end:'17:30',extra_break_minutes:10,firebase_config:{},email_high_priority:true}]});
 export const getConfig=()=>({...window.MONTME_CONFIG,...JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}')});
@@ -5,10 +25,52 @@ export function saveConfig(c){if(!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.tes
 export const configured=()=>Boolean(getConfig().url&&getConfig().key&&getConfig().adminEmail);
 export class Repository{
  constructor(local=false){this.local=local;this.data=emptyData();this.session=null;this.role='admin';this.owner=local;this.permissions=[];this.employee=null;this.lastSync=null;this.lastError=null;this.refreshing=null;this.authStorageKey=`montme.auth.${getConfig().url}`;try{this.session=JSON.parse(sessionStorage.getItem(this.authStorageKey)||'null')}catch{}}
- async request(path,{method='GET',body,headers={},raw=false,retry=true}={}){const c=getConfig();if(!c.url||!c.key)throw Error('Connect your Supabase project first.');if(this.session&&Date.now()>this.session.expires_at*1000-30000)await this.refreshToken();const response=await fetch(c.url+path,{method,headers:{apikey:c.key,...(this.session?{Authorization:`Bearer ${this.session.access_token}`}:{Authorization:`Bearer ${c.key}`}),...(!raw?{'Content-Type':'application/json'}:{}),...headers},body:body==null?undefined:raw?body:JSON.stringify(body)});if(response.status===401&&this.session&&retry){await this.refreshToken();return this.request(path,{method,body,headers,raw,retry:false});}if(!response.ok){let e;try{e=await response.json()}catch{}const error=Error(e?.message||e?.msg||e?.error_description||e?.error||`Request failed (${response.status}).`);error.code=e?.code;throw error;}if(response.status===204||response.headers.get('content-length')==='0')return null;const text=await response.text();return text?JSON.parse(text):null;}
+ async request(path,{method='GET',body,headers={},raw=false,retry=true}={}){
+  const c=getConfig();
+  if(!c.url||!c.key)throw Error('Connect your Supabase project first.');
+  if(this.session&&Date.now()>this.session.expires_at*1000-30000)await this.refreshToken();
+  const {response,data}=await fetchJson(c.url+path,{
+   method,
+   headers:{apikey:c.key,Authorization:`Bearer ${this.session?.access_token||c.key}`,
+    ...(!raw?{'Content-Type':'application/json'}:{}),...headers},
+   body:body==null?undefined:raw?body:JSON.stringify(body)
+  },raw?60000:15000);
+  if(response.status===401&&this.session&&retry){
+   await this.refreshToken();
+   return this.request(path,{method,body,headers,raw,retry:false});
+  }
+  if(!response.ok){
+   const message=response.status>=500?'The company server is temporarily unavailable. Try again shortly.':
+    response.status===429?'Too many requests. Please wait a moment and try again.':
+    data?.message||data?.msg||data?.error_description||data?.error||`Request failed (${response.status}).`;
+   const error=Error(typeof message==='string'?message:'The request could not be completed.');
+   error.code=data?.code;error.status=response.status;throw error;
+  }
+  return data;
+ }
  storeSession(s){this.session={...s,expires_at:s.expires_at||Math.floor(Date.now()/1000)+(s.expires_in||3600)};sessionStorage.setItem(this.authStorageKey,JSON.stringify(this.session));}
- async refreshToken(){if(this.refreshing)return this.refreshing;this.refreshing=(async()=>{const c=getConfig();const r=await fetch(`${c.url}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:{apikey:c.key,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:this.session?.refresh_token})});if(!r.ok){this.session=null;sessionStorage.removeItem(this.authStorageKey);throw Error('Your session expired. Please sign in again.');}this.storeSession(await r.json());})().finally(()=>this.refreshing=null);return this.refreshing;}
+ async refreshToken(){
+  if(this.refreshing)return this.refreshing;
+  this.refreshing=(async()=>{
+   const c=getConfig();
+   const {response,data}=await fetchJson(`${c.url}/auth/v1/token?grant_type=refresh_token`,{
+    method:'POST',headers:{apikey:c.key,'Content-Type':'application/json'},
+    body:JSON.stringify({refresh_token:this.session?.refresh_token})
+   });
+   if(!response.ok){
+    if(response.status>=500||response.status===429)throw Error('Session refresh is temporarily unavailable. Try again shortly.');
+    this.session=null;sessionStorage.removeItem(this.authStorageKey);
+    throw Error('Your session expired. Please sign in again.');
+   }
+   this.storeSession(data);
+  })().finally(()=>this.refreshing=null);
+  return this.refreshing;
+ }
  async login(username,password){if(this.local)return;if(!username.trim())throw Error('Enter your username.');const admin=username.toLowerCase()==='lokesh',email=admin?getConfig().adminEmail:username;const s=await this.request(admin||username.includes('@')?'/auth/v1/token?grant_type=password':'/functions/v1/employee-login',{method:'POST',body:admin||username.includes('@')?{email,password}:{employee_id:username,password}});this.storeSession(s);try{await this.identify()}catch(e){await this.logout();throw e;}}
+ canReceiveAdminNotice(row){
+  const permission={early_exit:'attendance.approve',submission:'reports.read'}[row.kind]||'activity.view';
+  return this.can(permission);
+ }
  can(permission){return this.local||this.owner||this.permissions.includes(permission);}
  async identify(){const admins=await this.request('/rest/v1/app_admins?select=username&user_id=eq.'+encodeURIComponent(this.session.user.id));if(admins.length){this.owner=true;this.role='admin';return;}const employees=await this.request('/rest/v1/employees?select=*&auth_id=eq.'+encodeURIComponent(this.session.user.id)+'&active=eq.true');if(!employees.length)throw Error('This account is not active. Ask your admin to check access.');this.employee=employees[0];const roles=await this.request('/rest/v1/workspace_roles?select=*');this.permissions=roles.find(r=>r.id===this.employee.role_id)?.permissions||[];this.role=this.permissions.length?'admin':'employee';}
  async logout(){if(!this.local&&this.session){try{await this.request('/auth/v1/logout',{method:'POST'})}catch{}}this.session=null;sessionStorage.removeItem(this.authStorageKey);}
@@ -23,7 +85,10 @@ export class Repository{
    return [];
   }
  }
- async load(){if(this.local){this.data={...emptyData(),...JSON.parse(localStorage.getItem(DATA_KEY)||'{}')};return this.data;}if(!this.session)throw Error('Sign in to load your workspace.');const tables={employees:'employees',contacts:'contacts',content:'content_items',assignments:'assignments',receipts:'assignment_receipts',calls:'call_records',shifts:'shift_records',roles:'workspace_roles',breaks:'break_records',activity:'activity_events',notifications:'notifications',notificationReceipts:'notification_receipts',deliveries:'notification_deliveries',settings:'workspace_settings',exits:'early_exit_requests',submissions:'work_submissions'};const entries=await Promise.all(Object.entries(tables).map(async([k,t])=>[k,await this.request(`/rest/v1/${t}?select=*&order=created_at.desc&limit=5000`)]));entries.push(['dailyReports',await this.loadDailyReports()]);this.data=Object.fromEntries(entries);if(!this.owner){const own=this.data.employees.find(e=>e.auth_id===this.session.user.id&&e.active);if(!own){await this.logout();throw Error('Your employee account is inactive.');}this.employee=own;this.permissions=this.data.roles.find(r=>r.id===own.role_id)?.permissions||[];this.role=this.permissions.length?'admin':'employee';}this.lastSync=new Date();this.lastError=null;this.browserAlerts();return this.data;}
+ async load(){if(this.local){this.data={...emptyData(),...JSON.parse(localStorage.getItem(DATA_KEY)||'{}')};return this.data;}if(!this.session)throw Error('Sign in to load your workspace.');const tables={employees:'employees',contacts:'contacts',content:'content_items',assignments:'assignments',receipts:'assignment_receipts',calls:'call_records',shifts:'shift_records',roles:'workspace_roles',breaks:'break_records',activity:'activity_events',notifications:'notifications',notificationReceipts:'notification_receipts',deliveries:'notification_deliveries',settings:'workspace_settings',exits:'early_exit_requests',submissions:'work_submissions'};const entries=await Promise.all([
+ ...Object.entries(tables).map(async([k,t])=>[k,await this.request(`/rest/v1/${t}?select=*&order=created_at.desc&limit=5000`)]),
+ this.loadDailyReports().then(rows=>['dailyReports',rows])
+]);this.data=Object.fromEntries(entries);if(!this.owner){const own=this.data.employees.find(e=>e.auth_id===this.session.user.id&&e.active);if(!own){await this.logout();throw Error('Your employee account is inactive.');}this.employee=own;this.permissions=this.data.roles.find(r=>r.id===own.role_id)?.permissions||[];this.role=this.permissions.length?'admin':'employee';}this.lastSync=new Date();this.lastError=null;this.browserAlerts();return this.data;}
  table(name){return {content:'content_items',receipts:'assignment_receipts',calls:'call_records',shifts:'shift_records',roles:'workspace_roles',settings:'workspace_settings'}[name]||name;}
  persist(){localStorage.setItem(DATA_KEY,JSON.stringify(this.data));}
  async save(name,row){if(this.local){const index=this.data[name].findIndex(r=>r.id===row.id);const val={...(index>=0?this.data[name][index]:{}),...row,id:row.id||crypto.randomUUID(),created_at:row.created_at||new Date().toISOString()};if(index>=0)this.data[name][index]=val;else this.data[name].unshift(val);this.persist();return val;}const id=row.id;const payload={...row};delete payload.id;delete payload.created_at;const result=await this.request(`/rest/v1/${this.table(name)}${id?'?id=eq.'+encodeURIComponent(id):''}`,{method:id?'PATCH':'POST',body:payload,headers:{Prefer:'return=representation'}});return result[0];}
@@ -50,7 +115,7 @@ export class Repository{
  }
  async retryDeliveries(){if(this.local)throw Error('Delivery is unavailable in preview.');return this.request('/rest/v1/rpc/retry_notification_deliveries',{method:'POST',body:{}});}
  async deliveryAction(action){if(this.local)throw Error('Delivery providers are unavailable in local preview.');return this.request('/functions/v1/deliver-notifications',{method:'POST',body:{action}});}
- browserAlerts(){if(this.local||!('Notification'in window))return;const id=this.session?.user?.id,key='montme.browser-alerts.'+id,now=new Date(),mine=this.data.notifications.filter(n=>!n.cancelled_at&&new Date(n.available_at)<=now&&(n.audience==='admin'?this.can('activity.view'):n.employee_id===this.employee?.id));const stored=sessionStorage.getItem(key),seen=new Set(JSON.parse(stored||'[]'));if(stored&&Notification.permission==='granted'){const fresh=mine.filter(n=>!seen.has(n.id));for(const n of fresh.slice(0,3))new Notification(n.title,{body:n.body,tag:n.id});}mine.forEach(n=>seen.add(n.id));sessionStorage.setItem(key,JSON.stringify([...seen].slice(-5000)));}
+ browserAlerts(){if(this.local||!('Notification'in window))return;const id=this.session?.user?.id,key='montme.browser-alerts.'+id,now=new Date(),mine=this.data.notifications.filter(n=>!n.cancelled_at&&new Date(n.available_at)<=now&&(n.audience==='admin'?this.canReceiveAdminNotice(n):n.employee_id===this.employee?.id));const stored=sessionStorage.getItem(key),seen=new Set(JSON.parse(stored||'[]'));if(stored&&Notification.permission==='granted'){const fresh=mine.filter(n=>!seen.has(n.id));for(const n of fresh.slice(0,3))new Notification(n.title,{body:n.body,tag:n.id});}mine.forEach(n=>seen.add(n.id));sessionStorage.setItem(key,JSON.stringify([...seen].slice(-5000)));}
  async receipt(assignmentId,status){if(this.local)throw Error('Employee acknowledgements require a connected employee account.');await this.request('/rest/v1/rpc/acknowledge_assignment',{method:'POST',body:{assignment_id_input:assignmentId,status_input:status}});}
 }
 function openDb(){return new Promise((resolve,reject)=>{const r=indexedDB.open('montme.admin.files',1);r.onupgradeneeded=()=>r.result.createObjectStore('files');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}

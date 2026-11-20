@@ -2,6 +2,14 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+class AttendanceUnavailable implements Exception {
+  const AttendanceUnavailable();
+
+  @override
+  String toString() =>
+      'Clock-in and clock-out are unavailable until your company updates its attendance server. Contact your admin.';
+}
+
 /// Uses public project configuration. RLS authorizes every company request.
 class CompanyCloud {
   CompanyCloud({http.Client? client, this.persistSession = true})
@@ -66,8 +74,27 @@ class CompanyCloud {
     final result = await http.Response.fromStream(
       await _client.send(response).timeout(const Duration(seconds: 25)),
     ).timeout(const Duration(seconds: 25));
-    final dynamic data = result.body.isEmpty ? null : jsonDecode(result.body);
+    if (result.statusCode >= 500) {
+      throw StateError(
+        'The company server is temporarily unavailable. Try again shortly.',
+      );
+    }
+    final dynamic data;
+    try {
+      data = result.body.isEmpty ? null : jsonDecode(result.body);
+    } on FormatException {
+      throw StateError('The company server returned an unexpected response.');
+    }
     if (result.statusCode >= 400) {
+      if (data is Map &&
+          data['code'] == 'PGRST202' &&
+          const {
+            '/rest/v1/rpc/clock_in',
+            '/rest/v1/rpc/submit_daily_report',
+            '/rest/v1/rpc/toggle_shift_break',
+          }.contains(path)) {
+        throw const AttendanceUnavailable();
+      }
       throw StateError(
         result.statusCode == 404 && path.startsWith('/functions/')
             ? 'The account service is not deployed yet. Ask your admin to complete the server upgrade.'

@@ -111,5 +111,14 @@ test('Migration preserves history and enforces roles, notification receipts and 
    {outcome:'Follow-up',notes:'Web notes',duration_seconds:48});
  assert.equal((await db.query('select status from contacts where id=$1',[lead])).rows[0].status,'Follow-up');
  await assert.rejects(asUser(outsider,"select review_my_call('daily-call','Busy','Other account');"),/not in your workspace/);
+
+ await db.exec(await readFile(new URL('../supabase/migrations/20261120_012_attendance_permissions.sql',import.meta.url),'utf8'));
+ await db.exec(`update employees set role_id=(select id from workspace_roles where name='Manager') where id='${outsider}';`);
+ assert.equal((await asUser(outsider,'select * from daily_work_reports;'))[0].rows.length,0);
+ assert.equal((await asUser(outsider,"select * from notifications where audience='admin' and kind='early_exit';"))[0].rows.length,0);
+ await assert.rejects(asUser(outsider,`select decide_early_exit('${request}',true,'');`),/Attendance approval permission/);
+ await db.exec("update workspace_roles set permissions=permissions||array['attendance.approve','reports.read'] where name='Manager'");
+ assert.equal((await asUser(outsider,'select * from daily_work_reports;'))[0].rows.length,1);
+ assert.ok((await asUser(outsider,"select * from notifications where audience='admin' and kind='early_exit';"))[0].rows.length>0);
  }finally{await db.close();}
 });

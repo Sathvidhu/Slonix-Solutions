@@ -123,3 +123,9 @@ Gmail uses TLS to smtp.gmail.com:465. Google may restrict app passwords on manag
 ### Employee lead creation and call reviews
 
 Apply `20261120_011_employee_leads.sql` after migration 010. Web lead creation and call review become available after PostgREST reloads the schema. Employee-created leads are assigned to their creator. Once synced, Android can display those leads through its existing company contact feed. The updated Android source also reads and writes shared call outcomes. Prior Android APKs can continue syncing call durations, but their cached outcomes do not overwrite shared reviews.
+
+### Attendance permissions and account notices
+
+Apply `20261120_012_attendance_permissions.sql` after migration 011. Workspace owners keep access by default. Delegated staff need `attendance.approve` to review early clock-out requests and `reports.read` to view or download submitted reports. The new permissions also scope approval and submission notifications. Review delegated roles before applying the migration. Redeploy `employee-admin` to stop transmitting initial and reset passwords in emails. Account notices contain the employee ID and direct employees to the company’s secure onboarding channel. Rotate any credentials previously shared in plain text.
+
+The Vercel configuration adds browser security headers. Apply equivalent headers if serving these assets through another web server.

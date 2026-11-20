@@ -172,7 +172,7 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
         unawaited(s.syncCompany());
       }
     } catch (e) {
-      if (mounted) message(context, e.toString());
+      if (mounted) message(context, workspaceError(e), error: true);
     }
   }
 
@@ -263,8 +263,8 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
                     'My leads',
                     'Call activity',
                     'My reports',
-                    'Settings',
                     'Work',
+                    'Settings',
                   ][page],
                 )
               : const FittedBox(
@@ -320,8 +320,8 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
                     1 => leadsPage(),
                     2 => callsPage(),
                     3 => reports(),
-                    4 => settings(),
-                    _ => assignments(),
+                    4 => assignments(),
+                    _ => settings(),
                   },
                 ],
               ),
@@ -351,12 +351,12 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
                     label: 'Reports',
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.tune_rounded),
-                    label: 'Settings',
-                  ),
-                  NavigationDestination(
                     icon: Icon(Icons.assignment_outlined),
                     label: 'Work',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.tune_rounded),
+                    label: 'Settings',
                   ),
                 ],
               ),
@@ -403,8 +403,8 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
                                 Icons.people_outline,
                                 Icons.call_outlined,
                                 Icons.bar_chart_rounded,
-                                Icons.tune_rounded,
                                 Icons.assignment_outlined,
+                                Icons.tune_rounded,
                               ][i],
                             ),
                             title: Text(
@@ -413,8 +413,8 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
                                 'My leads',
                                 'Call activity',
                                 'My reports',
-                                'Settings',
                                 'Work',
+                                'Settings',
                               ][i],
                               style: const TextStyle(fontSize: 14),
                             ),
@@ -944,7 +944,7 @@ class _DailyReportDialogState extends State<_DailyReportDialog> {
       if (mounted) {
         setState(() {
           sending = false;
-          error = failure.toString();
+          error = workspaceError(failure);
         });
       }
     }
