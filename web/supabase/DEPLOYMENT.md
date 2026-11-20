@@ -90,7 +90,25 @@ The mobile notification bell and Reload appear on every main page. Android 13+ r
 
 Employees request early clock-out with a reason. Activity > Early clock-out requests lets authorized admins approve or dismiss with a note. The employee receives a notification; an approval applies to that shift only and is consumed at clock-out. This is clock-out, not account sign-out.
 
-Work > Send all calls as Excel sends the current device report directly. Upload report file accepts an exported workbook or PDF/text/CSV/JSON up to 20 MB. Activity > Employee report uploads lists private downloads. These files are reviewed separately and do not insert duplicate call rows.
+Upload report file accepts a workbook or PDF/text/CSV/JSON up to 20 MB. Admin > Daily Work Reports lists clock-out submissions and private file uploads. An attachment does not insert duplicate call records.
+
+## Employee workspace and attendance rollout
+
+Apply `20261120_010_employee_workspace.sql` after migration 009. Review this preflight query before applying the migration. Resolve any duplicate open shifts against actual employee attendance because the new database constraint permits one open shift per employee.
+
+```sql
+select employee_id, count(*)
+from public.shift_records
+where ended_at is null
+group by employee_id
+having count(*) > 1;
+```
+
+Coordinate the migration with the updated Android app and web assets. The migration replaces direct attendance writes with named RPCs, so older Android versions cannot write attendance after cutover. Have employees sync their devices before the update. The browser employee workspace is served at `/employee.html` from the same static assets as the admin workspace.
+
+Set each employee's schedule in Employees > Employee clock-out schedules. Times repeat in IST. Clearing the time restores eligibility two hours after clock-in. A schedule sets the earliest normal clock-out time, and employees still clock out themselves. Early exits still require approval. The Daily Work Report captures attendance, break intervals and synced calls for the shift in the same transaction that closes it. Android can import local call logs with consent. Browser clock-out includes the data already synced to the server.
+
+For background browser push, deploy the updated `deliver-notifications` Edge Function and configure a Firebase web app and Web Push public key under the admin break and push settings. Use the same Firebase project as the server's `FIREBASE_SERVICE_ACCOUNT`. Serve the employee site over HTTPS and grant browser notifications from employee Settings. Browser alerts display a generic reminder and open the signed-in notification inbox. Workspace Settings also controls the company name shown in both employee clients.
 
 ### Admin Gmail activation
 

@@ -1,11 +1,14 @@
 import 'dart:convert';
 import 'package:archive/archive.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'
+    show debugDefaultTargetPlatformOverride;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:montme/main.dart';
 import 'package:montme/models/entities.dart';
 import 'package:montme/services/app_store.dart';
+import 'package:montme/services/company_cloud.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -146,11 +149,18 @@ void main() {
   testWidgets('employee can navigate and clock in from a narrow screen', (
     tester,
   ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final s = await store();
+    SharedPreferences.setMockInitialValues({});
+    final cloud = _AttendanceCloud();
+    final s = AppStore(
+      await SharedPreferences.getInstance(),
+      companyCloud: cloud,
+    );
     await s.profile('Asha', '1', 'Acme');
     await tester.pumpWidget(
       MaterialApp(
@@ -166,11 +176,26 @@ void main() {
     await tester.pump();
     expect(s.active, isNotNull);
     expect(find.text('Clock out after 2 hours'), findsOneWidget);
+    expect(find.text('Submit report and clock out'), findsNothing);
+    cloud.employee!['clock_out_time'] = '00:00:00';
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(s.attendanceBusy, isFalse);
+    final clockOut = find.text('Clock out');
+    await tester.ensureVisible(clockOut);
+    await tester.tap(clockOut);
+    await tester.pumpAndSettle();
+    expect(find.text('Daily Work Report'), findsOneWidget);
+    await tester.tap(find.text('Submit report and clock out'));
+    await tester.pumpAndSettle();
+    expect(s.active, isNull);
+    expect(cloud.submittedShift, 'shared-shift');
     await tester.tap(find.text('Leads'));
     await tester.pumpAndSettle();
     expect(find.text('Add lead'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
+    debugDefaultTargetPlatformOverride = null;
   });
   test(
     'Android import excludes personal and off-shift calls, deduplicates and refreshes durations',
@@ -285,4 +310,48 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+}
+
+class _AttendanceCloud extends CompanyCloud {
+  _AttendanceCloud() : super(persistSession: false) {
+    employee = {'id': 'employee', 'name': 'Asha', 'employee_code': '1'};
+  }
+
+  String? submittedShift;
+
+  @override
+  bool get connected => true;
+
+  @override
+  Future<void> fetchWork() async {}
+
+  @override
+  Future<dynamic> request(
+    String path, {
+    String method = 'GET',
+    Object? body,
+    String? prefer,
+    bool refresh = true,
+  }) async {
+    if (path.endsWith('/clock_in')) {
+      final shift = <String, dynamic>{
+        'device_shift_id': 'shared-shift',
+        'started_at': DateTime.now().toUtc().toIso8601String(),
+        'ended_at': null,
+        'breaks': [],
+      };
+      shifts = [shift];
+      return shift;
+    }
+    if (path.endsWith('/submit_daily_report')) {
+      submittedShift = (body as Map)['shift_input'] as String;
+      final shift = {
+        ...shifts.single,
+        'ended_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      shifts = [shift];
+      return shift;
+    }
+    throw StateError('Unexpected request: $path');
+  }
 }

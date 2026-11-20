@@ -24,7 +24,9 @@ class CompanyCloud {
       notifications = [],
       notificationReceipts = [],
       exitRequests = [],
-      submissions = [];
+      submissions = [],
+      shifts = [],
+      syncedCalls = [];
   Map<String, dynamic> settings = {};
   DateTime? lastSync;
   String? error;
@@ -190,6 +192,8 @@ class CompanyCloud {
     notificationReceipts = [];
     exitRequests = [];
     submissions = [];
+    shifts = [];
+    syncedCalls = [];
     settings = {};
     userId = null;
     lastSync = null;
@@ -204,7 +208,7 @@ class CompanyCloud {
                     ? '&recipient_ids=cs.{${employee!['id']}}'
                     : table == 'notifications'
                     ? '&audience=eq.employee&employee_id=eq.${employee!['id']}'
-                    : (table == 'early_exit_requests' || table == 'work_submissions')
+                    : (table == 'early_exit_requests' || table == 'work_submissions' || table == 'shift_records' || table == 'call_records')
                     ? '&employee_id=eq.${employee!['id']}'
                     : table == 'notification_receipts'
                     ? '&user_id=eq.$userId'
@@ -233,6 +237,8 @@ class CompanyCloud {
       rows('workspace_settings'),
       rows('early_exit_requests'),
       rows('work_submissions'),
+      rows('shift_records'),
+      rows('call_records'),
     ]);
     assignments = results[0]
       ..sort(
@@ -253,6 +259,8 @@ class CompanyCloud {
     settings = results[6].firstOrNull ?? {};
     exitRequests = results[7];
     submissions = results[8];
+    shifts = results[9];
+    syncedCalls = results[10];
   }
 
   Future<void> upsert(

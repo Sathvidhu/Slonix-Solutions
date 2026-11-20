@@ -585,7 +585,7 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
         ),
         const SizedBox(height: 20),
         info(
-          'The shift clock continues through breaks. Reports show net work time after subtracting breaks. Clock out unlocks 2 hours after clock in.',
+          'The shift clock continues through breaks. Reports show net work time after subtracting breaks. Clock-out availability follows your company schedule.',
         ),
       ],
     );
@@ -708,17 +708,32 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
                   disabledForegroundColor: Colors.white60,
                   foregroundColor: ink,
                 ),
-                onPressed: active != null && !s.canClockOut
+                onPressed:
+                    s.attendanceBusy || (active != null && !s.canClockOut)
                     ? null
                     : () async {
-                        if (active != null &&
-                            !await confirm(
-                              'Finish your shift?',
-                              'Your work time will be saved.',
-                            )) {
+                        if (active == null) {
+                          await action(() => s.companyClock());
                           return;
                         }
-                        await action(s.clock);
+                        final submitted = await showDialog<bool>(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (_) => _DailyReportDialog(
+                            submit: () async {
+                              if (s.consent && CallBridge.supported) {
+                                await s.importCalls();
+                              }
+                              await s.companyClock(closingShift: active.id);
+                            },
+                          ),
+                        );
+                        if (mounted && submitted == true) {
+                          message(
+                            context,
+                            'Daily Work Report submitted. You are clocked out.',
+                          );
+                        }
                       },
                 icon: Icon(
                   active == null
@@ -730,7 +745,9 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
                       ? 'Clock in'
                       : s.canClockOut
                       ? 'Clock out'
-                      : 'Clock out after 2 hours',
+                      : (s.clockOutTime == null
+                            ? 'Clock out after 2 hours'
+                            : 'Clock out at ${s.clockOutTime!.substring(0, 5)} IST'),
                 ),
               ),
               if (active != null && !s.canClockOut)
@@ -896,6 +913,68 @@ class _WorkspaceState extends State<Workspace> with WidgetsBindingObserver {
           ],
         ),
       ),
+    ),
+  );
+}
+
+class _DailyReportDialog extends StatefulWidget {
+  const _DailyReportDialog({required this.submit});
+
+  final Future<void> Function() submit;
+
+  @override
+  State<_DailyReportDialog> createState() => _DailyReportDialogState();
+}
+
+class _DailyReportDialogState extends State<_DailyReportDialog> {
+  bool sending = false;
+
+  String? error;
+
+  Future<void> send() async {
+    setState(() {
+      sending = true;
+      error = null;
+    });
+
+    try {
+      await widget.submit();
+      if (mounted) Navigator.pop(context, true);
+    } catch (failure) {
+      if (mounted) {
+        setState(() {
+          sending = false;
+          error = failure.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !sending,
+    child: AlertDialog(
+      title: const Text('Daily Work Report'),
+      content: Text(
+        error ??
+            "Submit this shift's work time, breaks and saved business calls to your company to clock out.",
+      ),
+
+      actions: [
+        TextButton(
+          onPressed: sending ? null : () => Navigator.pop(context),
+
+          child: const Text('Cancel'),
+        ),
+
+        FilledButton(
+          onPressed: sending ? null : send,
+
+          child: Text(
+            sending ? 'Submitting...' : 'Submit report and clock out',
+          ),
+        ),
+      ],
     ),
   );
 }

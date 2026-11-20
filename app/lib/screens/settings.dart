@@ -29,12 +29,20 @@ extension _SettingsScreens on _WorkspaceState {
               ),
             ),
             const Divider(height: 1),
-            const ListTile(
-              leading: Icon(Icons.cloud_off_outlined),
-              title: Text('Saved on this device'),
+            ListTile(
+              leading: Icon(
+                s.cloud.connected
+                    ? Icons.cloud_done_outlined
+                    : Icons.cloud_off_outlined,
+              ),
+              title: Text(
+                s.cloud.connected ? 'Company sync' : 'Saved on this device',
+              ),
               subtitle: Text(
-                'Company sync is available after employee sign-in and consent below.',
-                style: TextStyle(fontSize: 12),
+                s.cloud.connected
+                    ? 'Shifts, saved business calls and assigned work sync with your company workspace.'
+                    : 'Sign in to sync work records with your company.',
+                style: const TextStyle(fontSize: 12),
               ),
             ),
           ],
@@ -332,50 +340,72 @@ extension _SettingsScreens on _WorkspaceState {
   }
 
   Future<void> editProfile() async {
-    final name = TextEditingController(text: s.name),
-        id = TextEditingController(text: s.employeeId),
-        company = TextEditingController(text: s.company);
+    final name = TextEditingController(text: s.name);
     final form = GlobalKey<FormState>();
+    var saving = false;
+    String? error;
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit local profile'),
-        content: SizedBox(
-          width: 400,
-          child: Form(
-            key: form,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                field(name, 'Your name'),
-                const SizedBox(height: 12),
-                field(id, 'Employee ID'),
-                const SizedBox(height: 12),
-                field(company, 'Company name'),
-              ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Edit display name'),
+          content: SizedBox(
+            width: 400,
+            child: Form(
+              key: form,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  field(name, 'Display name'),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    title: const Text('Employee ID'),
+                    subtitle: Text(s.employeeId),
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    title: const Text('Company name'),
+                    subtitle: Text(s.company),
+                  ),
+                  if (error != null) Text(error!),
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (saving || !form.currentState!.validate()) return;
+                      setDialogState(() {
+                        saving = true;
+                        error = null;
+                      });
+                      try {
+                        await s.updateDisplayName(name.text);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      } catch (failure) {
+                        if (ctx.mounted) {
+                          setDialogState(() {
+                            saving = false;
+                            error = failure.toString();
+                          });
+                        }
+                      }
+                    },
+              child: const Text('Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (!form.currentState!.validate()) return;
-              await action(() => s.profile(name.text, id.text, company.text));
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
     await Future<void>.delayed(const Duration(milliseconds: 300));
     name.dispose();
-    id.dispose();
-    company.dispose();
   }
 
   Future<void> showExport(String title, String data) async {

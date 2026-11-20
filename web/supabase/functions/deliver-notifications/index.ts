@@ -22,19 +22,24 @@ export const handler=endpoint(async(req)=>{
          const settings=await api('/rest/v1/workspace_settings?select=email_high_priority');
          if(!settings[0]?.email_high_priority||!emailReady()){patch={status:'blocked',last_error:'Email is disabled or unconfigured. Add GMAIL_USER and GMAIL_APP_PASSWORD in Supabase secrets.'};summary.blocked++;}
          else{
-           const emails=[...new Set(targets.map((t:any)=>t.email))] as string[];
-           const providerId=await sendEmail(emails,`[Montme - ${n.priority}] ${n.title}`,`${n.title}\n\n${n.body}\n\nSign in to Montme to review this notification.`, `montme-notification-${n.id}`);
-           patch={status:'sent',sent_at:new Date().toISOString(),provider_id:providerId,last_error:null};summary.sent++;
+           const emails=[...new Set(targets.map((t:any)=>t.email).filter(Boolean))] as string[];
+           await api('/rest/v1/notification_delivery_recipients?on_conflict=delivery_id,email',{method:'POST',prefer:'resolution=merge-duplicates',body:emails.map(email=>({delivery_id:job.id,email}))});
+           const recipients=await api(`/rest/v1/notification_delivery_recipients?delivery_id=eq.${job.id}&select=*`);let failed=false,providerId:string|undefined;
+           for(const recipient of recipients){if(recipient.status==='sent'||recipient.status==='failed')continue;try{providerId=await sendEmail(recipient.email,`[Montme - ${n.priority}] ${n.title}`,`${n.title}\n\n${n.body}\n\nSign in to Montme to review this notification.`, `montme-notification-${n.id}-${recipient.id}`);await api(`/rest/v1/notification_delivery_recipients?id=eq.${recipient.id}`,{method:'PATCH',body:{status:'sent',sent_at:new Date().toISOString(),provider_id:providerId,last_error:null}});}catch(error){const attempts=recipient.attempts+1;await api(`/rest/v1/notification_delivery_recipients?id=eq.${recipient.id}`,{method:'PATCH',body:{status:attempts>=8?'failed':'retry',attempts,last_error:(error as Error).message}});failed=true;}}
+           const remaining=await api(`/rest/v1/notification_delivery_recipients?delivery_id=eq.${job.id}&status=in.(pending,retry,failed)&select=id`);if(failed||remaining.length)throw Error('One or more email recipients could not be sent.');
+           patch={status:'sent',sent_at:new Date().toISOString(),provider_id:providerId||null,last_error:null};summary.sent++;
          }
        }else{
          const raw=Deno.env.get('FIREBASE_SERVICE_ACCOUNT');
          if(!raw){patch={status:'blocked',last_error:'Push provider is not configured. Add FIREBASE_SERVICE_ACCOUNT in Supabase secrets.'};summary.blocked++;}
          else{
            const account=JSON.parse(raw),token=await firebaseToken(account),ids=targets.map((t:any)=>t.user_id);
-           const devices=await api(`/rest/v1/push_devices?select=id,token&user_id=in.(${ids.join(',')})`);
+           const devices=await api(`/rest/v1/push_devices?select=id,token,platform&user_id=in.(${ids.join(',')})`);
            if(!devices.length){patch={status:'skipped',last_error:'No registered push devices. In-app notification is still available.'};summary.skipped++;}
            else{
-             let accepted=0;for(const device of devices){const r=await fetch(`https://fcm.googleapis.com/v1/projects/${account.project_id}/messages:send`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message:{token:device.token,data:{notification_id:n.id,title:n.title,body:n.body.slice(0,500)},android:{priority:'high'}}})});if(!r.ok){const e=await r.json();if(r.status===404||e.error?.details?.some((v:any)=>v.errorCode==='UNREGISTERED')){await api(`/rest/v1/push_devices?id=eq.${device.id}`,{method:'DELETE'});continue;}throw Error(`Push delivery failed (${r.status}).`);}accepted++;}
+             let accepted=0;for(const device of devices){const r=await fetch(`https://fcm.googleapis.com/v1/projects/${account.project_id}/messages:send`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message:{token:device.token,...(device.platform==='web'
+               ? {data:{notification_id:n.id},webpush:{headers:{Urgency:'high'}}}
+               : {data:{notification_id:n.id,title:n.title,body:n.body.slice(0,500)},android:{priority:'high'}})}})});if(!r.ok){const e=await r.json();if(r.status===404||e.error?.details?.some((v:any)=>v.errorCode==='UNREGISTERED')){await api(`/rest/v1/push_devices?id=eq.${device.id}`,{method:'DELETE'});continue;}throw Error(`Push delivery failed (${r.status}).`);}accepted++;}
              patch=accepted?{status:'sent',sent_at:new Date().toISOString(),last_error:null}:{status:'skipped',last_error:'No valid push devices.'};if(accepted)summary.sent++;else summary.skipped++;
            }
          }

@@ -23,34 +23,13 @@ extension _AssignmentScreens on _WorkspaceState {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'If records are missing, send all saved calls directly as Excel or upload an exported file. Uploads are reviewed separately and do not create duplicate call records.',
+                    'Submit your Daily Work Report when you clock out. You can also attach a separate file for your admin.',
                   ),
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,
                     children: [
-                      FilledButton.icon(
-                        onPressed: s.cloudBusy
-                            ? null
-                            : () => action(() async {
-                                await cloud.uploadReport(
-                                  'montme-calls-${DateTime.now().millisecondsSinceEpoch}.xlsx',
-                                  s.excel(),
-                                  note:
-                                      'All device call records, exported by employee',
-                                );
-                                await s.syncCompany();
-                                if (mounted) {
-                                  message(
-                                    context,
-                                    'Call report sent to admin.',
-                                  );
-                                }
-                              }),
-                        icon: const Icon(Icons.upload_file),
-                        label: const Text('Send all calls as Excel'),
-                      ),
                       OutlinedButton.icon(
                         onPressed: () => action(() async {
                           final file = await FilePicker.pickFile(

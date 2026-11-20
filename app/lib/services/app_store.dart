@@ -50,7 +50,7 @@ class AppStore extends ChangeNotifier {
       );
     }
     await prefs.setString('montme.cloud.owner', employee['id'] as String);
-    name = employee['name'] as String;
+    name = (employee['display_name'] ?? employee['name']) as String;
     employeeId = employee['employee_code'] as String;
     await save();
     await syncCompany();
@@ -238,7 +238,7 @@ class AppStore extends ChangeNotifier {
         String? token = state['token'] as String?;
         if (token == null &&
             cloud.settings['firebase_config'] is Map &&
-            (cloud.settings['firebase_config'] as Map).isNotEmpty) {
+            (cloud.settings['firebase_config'] as Map)['apiKey'] != null) {
           token = await DeviceAlerts.configurePush(
             Map<String, dynamic>.from(cloud.settings['firebase_config'] as Map),
           );
@@ -322,14 +322,29 @@ class AppStore extends ChangeNotifier {
     await prefs.setString(_outboxKey, jsonEncode(box));
   }
 
-  Future<void> syncCompany() async {
-    if (!cloud.connected || cloudBusy) return;
+  Future<void>? _companySync;
+  String? _companySyncError;
+  Future<void> syncCompany({bool forAttendance = false}) async {
+    if (!cloud.connected || (attendanceBusy && !forAttendance)) return;
+    final pending = _companySync;
+    if (pending != null) return pending;
+    final task = _syncCompany();
+    _companySync = task;
+    try {
+      await task;
+    } finally {
+      _companySync = null;
+    }
+  }
+
+  Future<void> _syncCompany() async {
     cloudBusy = true;
     try {
       await cloud.fetchWork();
       final box = Map<String, dynamic>.from(
         jsonDecode(prefs.getString(_outboxKey) ?? '{}') as Map,
       );
+      var updatedContact = false;
       for (final entry in box.entries.toList()) {
         if (!cloud.contacts.any((c) => c['id'] == entry.key)) {
           continue;
@@ -339,6 +354,7 @@ class AppStore extends ChangeNotifier {
           method: 'POST',
           body: entry.value,
         );
+        updatedContact = true;
         final latest = Map<String, dynamic>.from(
           jsonDecode(prefs.getString(_outboxKey) ?? '{}') as Map,
         );
@@ -347,8 +363,21 @@ class AppStore extends ChangeNotifier {
           await prefs.setString(_outboxKey, jsonEncode(latest));
         }
       }
-      await cloud.fetchWork();
+      if (updatedContact) await cloud.fetchWork();
       final map = _contactMap;
+      final employee = cloud.employee!;
+      name = (employee['display_name'] ?? employee['name']) as String;
+      employeeId = employee['employee_code'] as String;
+      company = (cloud.settings['company_name'] ?? company) as String;
+      final sharedShifts = cloud.shifts.map(_sharedShift).toList();
+      final previousOpenId = _sharedOpenId;
+      final sharedIds = sharedShifts.map((shift) => shift.id).toSet();
+      sessions.removeWhere((shift) => sharedIds.contains(shift.id));
+      sessions.addAll(sharedShifts);
+      _sharedOpenId = sharedShifts
+          .where((shift) => shift.end == null)
+          .firstOrNull
+          ?.id;
       for (final remote in cloud.contacts) {
         final old = leads
             .where(
@@ -378,11 +407,38 @@ class AppStore extends ChangeNotifier {
         }
       }
       await prefs.setString('montme.cloud.contacts', jsonEncode(map));
+      final callIds = calls.map((call) => call.id).toSet();
+      for (final remote in cloud.syncedCalls) {
+        final id = remote['device_call_id'] as String;
+        if (!callIds.add(id)) continue;
+        final phone = remote['phone'] as String;
+        final lead = leads
+            .where(
+              (lead) =>
+                  map[lead.id] == remote['contact_id'] &&
+                      remote['contact_id'] != null ||
+                  phone.isNotEmpty && phoneKey(lead.phone) == phoneKey(phone),
+            )
+            .firstOrNull;
+        if (lead == null) continue;
+        calls.add(
+          CallEntry(
+            id: id,
+            leadId: lead.id,
+            at: DateTime.parse(remote['started_at'] as String).toLocal(),
+            seconds: remote['duration_seconds'] as int,
+            direction: remote['direction'] as String,
+            source: remote['source'] as String,
+            outcome: remote['outcome'] as String,
+            note: remote['notes'] as String,
+          ),
+        );
+      }
+      if (previousOpenId != _sharedOpenId) await scheduleAttendanceAlerts();
       final eid = cloud.employee!['id'];
       final remoteIds = cloud.contacts.map((c) => c['id']).toSet();
       final uploadSignature = jsonEncode({
         'calls': calls.map((c) => c.toJson()).toList(),
-        'sessions': sessions.map((v) => v.toJson()).toList(),
         'contacts': cloud.contacts.map((v) => v['id']).toList(),
         'mapping': map,
       });
@@ -410,29 +466,16 @@ class AppStore extends ChangeNotifier {
               )
               .toList(),
         );
-        await cloud.upsert(
-          'shift_records',
-          'employee_id,device_shift_id',
-          sessions
-              .map(
-                (shift) => <String, dynamic>{
-                  'employee_id': eid,
-                  'device_shift_id': shift.id,
-                  'started_at': shift.start.toUtc().toIso8601String(),
-                  'ended_at': shift.end?.toUtc().toIso8601String(),
-                  'breaks': shift.breaks.map((b) => {for(final entry in b.entries) entry.key: ['start','end','deadline'].contains(entry.key) && entry.value != null ? DateTime.parse(entry.value!).toUtc().toIso8601String() : entry.value}).toList(),
-                },
-              )
-              .toList(),
-        );
         _lastCloudUpload = uploadSignature;
       }
+      _companySyncError = null;
       cloud.lastSync = DateTime.now();
       cloud.error = null;
       await refreshRemoteAlerts();
       await save();
     } catch (e) {
-      cloud.error = e.toString();
+      _companySyncError = e.toString();
+      cloud.error = _companySyncError;
       addLocalAlert(
         'sync-error:${e.toString()}',
         'Work sync needs attention',
@@ -469,9 +512,27 @@ class AppStore extends ChangeNotifier {
           .toList();
   Duration get shiftElapsed =>
       active == null ? Duration.zero : DateTime.now().difference(active!.start);
+  String? get clockOutTime => cloud.employee?['clock_out_time'] as String?;
+  DateTime? get scheduledClockOut {
+    final start = active?.start;
+    final setting = clockOutTime;
+    if (start == null || setting == null) return null;
+    final ist = start.toUtc().add(const Duration(hours: 5, minutes: 30));
+    final parts = setting.split(':');
+    return DateTime.utc(
+      ist.year,
+      ist.month,
+      ist.day,
+      int.parse(parts[0]),
+      int.parse(parts[1]),
+    ).subtract(const Duration(hours: 5, minutes: 30));
+  }
+
   bool get canClockOut =>
       active != null &&
-      (shiftElapsed >= const Duration(hours: 2) ||
+      ((scheduledClockOut == null
+              ? shiftElapsed >= const Duration(hours: 2)
+              : !DateTime.now().isBefore(scheduledClockOut!)) ||
           cloud.exitRequests.any(
             (r) =>
                 r['device_shift_id'] == active!.id && r['status'] == 'approved',
@@ -516,7 +577,33 @@ class AppStore extends ChangeNotifier {
 
   Future<void> _writes = Future.value();
   bool get configured => name.isNotEmpty;
-  WorkSession? get active => sessions.where((s) => s.end == null).firstOrNull;
+  String? _sharedOpenId;
+  WorkSession? get active => sessions
+      .where(
+        (shift) =>
+            shift.end == null &&
+            (!cloud.connected || shift.id == _sharedOpenId),
+      )
+      .firstOrNull;
+
+  WorkSession _sharedShift(Map<String, dynamic> row) => WorkSession.fromJson({
+    'id': row['device_shift_id'],
+    'start': DateTime.parse(
+      row['started_at'] as String,
+    ).toLocal().toIso8601String(),
+    'end': row['ended_at'],
+    'breaks': row['breaks'],
+  });
+
+  Future<void> _applyShift(dynamic row) async {
+    final shift = _sharedShift(Map<String, dynamic>.from(row as Map));
+    sessions.removeWhere((old) => old.id == shift.id);
+    sessions.add(shift);
+    _sharedOpenId = shift.end == null ? shift.id : null;
+    await save();
+    await scheduleAttendanceAlerts();
+  }
+
   DateTime get today =>
       DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
   List<CallEntry> callsFor(DateTime day) =>
@@ -595,18 +682,58 @@ class AppStore extends ChangeNotifier {
     await save();
   }
 
+  Future<void> updateDisplayName(String value) async {
+    final display = value.trim();
+    if (display.isEmpty || display.length > 120) {
+      throw const FormatException('Enter a display name up to 120 characters.');
+    }
+    if (cloud.connected) {
+      await cloud.request(
+        '/rest/v1/rpc/set_my_display_name',
+        method: 'POST',
+        body: {'name_input': display},
+      );
+      cloud.employee?['display_name'] = display;
+    }
+    name = display;
+    await save();
+  }
+
+  bool attendanceBusy = false;
+
+  Future<void> companyClock({String? closingShift}) async {
+    if (attendanceBusy) return;
+    if (!cloud.connected) {
+      throw StateError('Connect to your company to record attendance.');
+    }
+    attendanceBusy = true;
+    notifyListeners();
+    try {
+      await _companySync;
+      if (closingShift != null) {
+        await syncCompany(forAttendance: true);
+        if (_companySyncError != null) throw StateError(_companySyncError!);
+      }
+      final row = await cloud.request(
+        '/rest/v1/rpc/${closingShift == null ? 'clock_in' : 'submit_daily_report'}',
+        method: 'POST',
+        body: closingShift == null ? {} : {'shift_input': closingShift},
+      );
+      if (closingShift != null) await _safeAlert(DeviceAlerts.clear());
+      await _applyShift(row);
+    } finally {
+      attendanceBusy = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> clock() async {
+    if (cloud.connected) return companyClock(closingShift: active?.id);
     final current = active, now = DateTime.now();
     if (current == null) {
       sessions.add(WorkSession(id: uid(), start: now));
     } else {
-      if (shiftElapsed < const Duration(hours: 2) && cloud.connected) {
-        await cloud.request(
-          '/rest/v1/rpc/consume_early_exit',
-          method: 'POST',
-          body: {'shift_input': current.id},
-        );
-      } else if (!canClockOut) {
+      if (!canClockOut) {
         throw StateError('Clock out is available after 2 hours from clock in.');
       }
       if (current.onBreak) {
@@ -628,6 +755,27 @@ class AppStore extends ChangeNotifier {
   Future<void> toggleBreak([String? requestedKind]) async {
     final current = active;
     if (current == null) return;
+    if (cloud.connected) {
+      if (attendanceBusy) return;
+      attendanceBusy = true;
+      try {
+        await _companySync;
+        final row = await cloud.request(
+          '/rest/v1/rpc/toggle_shift_break',
+          method: 'POST',
+          body: {
+            'shift_input': current.id,
+            'expected_input': current.breaks,
+            'kind_input': requestedKind,
+          },
+        );
+        await _applyShift(row);
+      } finally {
+        attendanceBusy = false;
+        notifyListeners();
+      }
+      return;
+    }
     final now = DateTime.now();
     if (current.onBreak) {
       await refreshAttendanceAlerts();
@@ -841,16 +989,27 @@ class AppStore extends ChangeNotifier {
         'Backup contains invalid or duplicate records.',
       );
     }
-    final saved = jsonEncode({...j, 'consent': false, 'lastImport': null});
+    final saved = jsonEncode({
+      ...j,
+      if (cloud.connected) ...{
+        'name': name,
+        'employeeId': employeeId,
+        'company': company,
+      },
+      'consent': false,
+      'lastImport': null,
+    });
     if (!await prefs.setString('montme.v1', saved)) {
       throw StateError('Could not restore backup.');
     }
     leads = newLeads;
     sessions = newSessions;
     calls = newCalls;
-    name = j['name'];
-    employeeId = j['employeeId'];
-    company = j['company'];
+    if (!cloud.connected) {
+      name = j['name'];
+      employeeId = j['employeeId'];
+      company = j['company'];
+    }
     consent = false;
     lastImport = null;
     error = null;

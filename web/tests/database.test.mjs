@@ -53,7 +53,38 @@ test('Migration preserves history and enforces roles, notification receipts and 
  await assert.rejects(asUser(employee,`insert into work_submissions(employee_id,file_path,file_name,mime_type,size_bytes)values('${outsider}','${outsider}/file.xlsx','file.xlsx','application/octet-stream',10);`),/row-level security/);
  await db.exec(`insert into shift_records(employee_id,device_shift_id,started_at,breaks)values('${employee}','legacy-naive','2026-11-18T11:53:00Z','[{"start":"2026-11-18T17:33:00","end":"2026-11-18T17:33:39","kind":"extra"}]');`);
  await db.exec(await readFile(new URL('../supabase/migrations/20261118_008_break_timezone.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../supabase/migrations/20261118_009_delivery_reliability.sql',import.meta.url),'utf8'));
  assert.match((await db.query("select break_timestamp('2026-11-18T17:33:00')::text as stamp")).rows[0].stamp,/12:03:00/);
  assert.match((await db.query("select b.started_at::text as stamp from break_records b join shift_records s on s.id=b.shift_id where s.device_shift_id='legacy-naive'")).rows[0].stamp,/12:03:00/);
+
+ // Historical test fixtures intentionally created multiple legacy open shifts.
+ await db.exec('update shift_records set ended_at=greatest(now(),started_at) where ended_at is null');
+ await db.exec(await readFile(new URL('../supabase/migrations/20261120_010_employee_workspace.sql',import.meta.url),'utf8'));
+ await assert.rejects(asUser(outsider,'select clock_in();'),/Active employee/);
+ await assert.rejects(asUser(employee,`select set_employee_clock_out('${employee}','16:00');`),/Employee management/);
+ await asUser(admin,`select set_employee_clock_out('${employee}','16:00');`);
+ assert.equal((await db.query('select clock_out_time::text from employees')).rows[0].clock_out_time,'16:00:00');
+ await asUser(admin,`select set_employee_clock_out('${employee}',null);`);
+ const clock=async()=> (await asUser(employee,'select (clock_in()).device_shift_id as key;'))[0].rows[0].key;
+ const shift=await clock();
+ assert.equal(await clock(),shift);
+ await assert.rejects(asUser(employee,`update shift_records set ended_at=now() where device_shift_id='${shift}';`),/permission denied/);
+ await assert.rejects(asUser(employee,`select submit_daily_report('${shift}');`),/approval/);
+ assert.equal((await db.query('select count(*)::int as n from daily_work_reports')).rows[0].n,0);
+ await asUser(employee,`select request_early_exit('${shift}','Appointment');`);
+ const request=(await db.query('select id from early_exit_requests where device_shift_id=$1',[shift])).rows[0].id;
+ await asUser(admin,`select decide_early_exit('${request}',true,'');`);
+ await asUser(employee,`insert into call_records(employee_id,device_call_id,phone,lead_name,started_at,duration_seconds,direction,source)
+   values('${employee}','daily-call','9876543210','Test lead',clock_timestamp(),42,'Outgoing','Manual');
+   select submit_daily_report('${shift}');select submit_daily_report('${shift}');`);
+ const reports=(await asUser(admin,'select * from daily_work_reports;'))[0].rows;
+ assert.equal(reports.length,1);
+ assert.equal(reports[0].calls.length,1);
+ assert.equal(reports[0].calls[0].duration_seconds,42);
+ assert.equal((await asUser(outsider,'select * from daily_work_reports;'))[0].rows.length,0);
+ assert.equal((await db.query('select status from early_exit_requests where id=$1',[request])).rows[0].status,'used');
+ await asUser(employee,"select set_my_display_name('  Employee Display  ');");
+ assert.deepEqual((await db.query('select name, display_name, employee_code from employees')).rows[0],
+   {name:'Employee',display_name:'Employee Display',employee_code:'EMP-01'});
  }finally{await db.close();}
 });
